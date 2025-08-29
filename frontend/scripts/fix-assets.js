@@ -26,6 +26,61 @@ try {
   console.log('✅ Asset paths fixed successfully!');
   console.log('📁 Fixed file: dist/index.html');
   
+  // Create server.js for deployment
+  const serverCode = `const express = require('express');
+const path = require('path');
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Serve static files from the dist directory
+app.use(express.static(__dirname));
+
+// Handle SPA routing - serve index.html for all routes
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+// Health check endpoint for deployment platforms
+app.get('/health', (req, res) => {
+  res.status(200).json({ 
+    status: 'ok', 
+    message: 'Fynito Admin Portal is running',
+    timestamp: new Date().toISOString()
+  });
+});
+
+app.listen(PORT, () => {
+  console.log(\`🚀 Fynito Admin Portal running on port \${PORT}\`);
+  console.log(\`📱 Open: http://localhost:\${PORT}\`);
+  console.log(\`🔍 Health check: http://localhost:\${PORT}/health\`);
+});
+
+module.exports = app;`;
+  
+  fs.writeFileSync(path.join(distPath, 'server.js'), serverCode);
+  console.log('📝 Created server.js for deployment');
+  
+  // Create package.json for deployment
+  const packageJson = {
+    name: "fynito-admin-deployed",
+    version: "1.0.0",
+    description: "Deployed Fynito Admin Portal",
+    main: "server.js",
+    scripts: {
+      start: "node server.js",
+      serve: "node server.js"
+    },
+    dependencies: {
+      express: "^4.18.2"
+    },
+    engines: {
+      node: ">=16.0.0"
+    }
+  };
+  
+  fs.writeFileSync(path.join(distPath, 'package.json'), JSON.stringify(packageJson, null, 2));
+  console.log('📦 Created package.json for deployment');
+  
   // Create a simple server configuration
   const serverConfig = `
 # Simple server configuration for aapanel
@@ -66,6 +121,8 @@ server {
 ## 📁 What's in this folder:
 - index.html (main application)
 - assets/ (CSS, JS, images)
+- server.js (Express server for deployment)
+- package.json (dependencies for deployment)
 - nginx.conf (Nginx configuration for aapanel)
 
 ## 🚀 To deploy to aapanel:
@@ -75,10 +132,10 @@ server {
 3. Set proper permissions: chmod -R 755 /path/to/site
 4. Your app will be accessible at your domain
 
-## 🔧 Alternative: Simple static server
+## 🔧 Alternative: Use the built-in server
 If you prefer not to use Nginx, you can run:
-npm install -g serve
-serve -s . -l 3000
+npm install
+npm start
 
 ## 📱 Your app is now ready to serve!
 `;

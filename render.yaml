@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: fynito-admin-portal
+    env: node
+    buildCommand: cd frontend && npm install && npm run build:static
+    startCommand: cd frontend/dist && npm install && npm start
+    rootDir: frontend
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
