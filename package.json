@@ -1,0 +1,53 @@
+{
+  "name": "fynito-admin-portal",
+  "version": "1.0.0",
+  "description": "Superadmin portal for Fynito app with restaurant management, payments, and support system",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "nodemon --exec ts-node src/server/index.ts",
+    "dev:frontend": "cd frontend && npm run dev",
+    "build": "npm run build:backend && npm run build:frontend",
+    "build:backend": "tsc",
+    "build:frontend": "cd frontend && npm run build",
+    "start": "node dist/server/index.js",
+    "install:all": "npm install && cd frontend && npm install",
+    "db:migrate": "ts-node src/database/migrate.ts",
+    "db:seed": "ts-node src/database/seed.ts"
+  },
+  "keywords": ["admin", "portal", "restaurant", "management", "razorpay"],
+  "author": "Fynito Team",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "helmet": "^7.1.0",
+    "morgan": "^1.10.0",
+    "dotenv": "^16.3.1",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2",
+    "mysql2": "^3.6.5",
+    "sequelize": "^6.35.0",
+    "socket.io": "^4.7.4",
+    "razorpay": "^2.8.6",
+    "multer": "^1.4.5-lts.1",
+    "express-rate-limit": "^7.1.5",
+    "express-validator": "^7.0.1",
+    "compression": "^1.7.4"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/cors": "^2.8.17",
+    "@types/morgan": "^1.9.9",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jsonwebtoken": "^9.0.5",
+    "@types/multer": "^1.4.11",
+    "@types/compression": "^1.7.5",
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.2",
+    "ts-node": "^10.9.1",
+    "nodemon": "^3.0.2",
+    "concurrently": "^8.2.2",
+    "sequelize-cli": "^6.6.2"
+  }
+}
