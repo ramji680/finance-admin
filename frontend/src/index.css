@@ -4,6 +4,22 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Custom Animations */
+@keyframes modal-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.animate-modal-in {
+  animation: modal-in 0.2s ease-out;
+}
+
 /* Custom CSS Variables */
 :root {
   --primary-50: #eff6ff;
@@ -216,6 +232,10 @@ body {
   @apply bg-gray-100 text-gray-800;
 }
 
+.badge-info {
+  @apply bg-blue-100 text-blue-800;
+}
+
 /* Modern Navigation */
 .nav-item {
   @apply flex items-center px-4 py-3 text-sm font-medium text-gray-600 rounded-lg transition-all duration-200 hover:bg-blue-50 hover:text-blue-700 hover:scale-105;
@@ -394,6 +414,16 @@ body {
   to { transform: scale(1); opacity: 1; }
 }
 
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
 .animate-fade-in {
   animation: fadeIn 0.3s ease-out;
 }
@@ -404,6 +434,14 @@ body {
 
 .animate-scale-in {
   animation: scaleIn 0.2s ease-out;
+}
+
+.animate-slide-up {
+  animation: slideUp 0.4s ease-out;
+}
+
+.animate-pulse-slow {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
 /* Modern Responsive Design */
@@ -419,6 +457,32 @@ body {
   .main-content {
     @apply ml-0;
   }
+
+  .stat-card {
+    @apply p-4;
+  }
+
+  .stat-card-value {
+    @apply text-2xl;
+  }
+
+  .card-header {
+    @apply px-4 py-3;
+  }
+
+  .card-body {
+    @apply px-4 py-3;
+  }
+}
+
+@media (max-width: 640px) {
+  .stat-card {
+    @apply p-3;
+  }
+
+  .stat-card-value {
+    @apply text-xl;
+  }
 }
 
 /* Modern Focus States */
@@ -433,6 +497,10 @@ body {
 
 .hover-glow {
   @apply transition-all duration-200 hover:shadow-lg hover:shadow-blue-500/25;
+}
+
+.hover-scale {
+  @apply transition-transform duration-200 hover:scale-105;
 }
 
 /* Modern Gradients */
@@ -452,6 +520,18 @@ body {
   background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);
 }
 
+.gradient-blue {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.gradient-green {
+  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+}
+
+.gradient-purple {
+  background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+}
+
 /* Modern Shadows */
 .shadow-soft {
   box-shadow: 0 2px 15px -3px rgba(0, 0, 0, 0.07), 0 10px 20px -2px rgba(0, 0, 0, 0.04);
@@ -465,6 +545,10 @@ body {
   box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.15), 0 20px 25px -5px rgba(0, 0, 0, 0.1);
 }
 
+.shadow-glow {
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
+}
+
 /* Modern Transitions */
 .transition-smooth {
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -472,6 +556,10 @@ body {
 
 .transition-bounce {
   transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+.transition-spring {
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
 /* Modern Utilities */
@@ -485,6 +573,10 @@ body {
 .border-gradient {
   border: 2px solid;
   border-image: linear-gradient(135deg, #667eea 0%, #764ba2 100%) 1;
+}
+
+.glass-effect {
+  @apply bg-white/80 backdrop-blur-xl border border-white/20;
 }
 
 /* Modern Dark Mode Support */
@@ -529,5 +621,43 @@ body {
   
   .table tbody tr:hover {
     @apply bg-gray-700/50;
+  }
+
+  .stat-card {
+    @apply bg-gray-800 border-gray-700;
+  }
+
+  .form-input {
+    @apply bg-gray-700 border-gray-600 text-gray-100;
+  }
+}
+
+/* Custom Scrollbar for Webkit browsers */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 3px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Print Styles */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  
+  .print-break {
+    page-break-before: always;
   }
 }

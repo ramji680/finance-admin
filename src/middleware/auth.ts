@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
+import * as jwt from 'jsonwebtoken';
 import { User } from '../database/models';
 
 // Extend Express Request interface to include user
@@ -34,17 +34,20 @@ export const authenticateToken = async (
     
     // Verify user still exists and is active
     const user = await User.findByPk(decoded.id);
-    if (!user || !user.isActive) {
+    if (!user || user.status !== 'active') {
       res.status(401).json({ error: 'Invalid or inactive user' });
       return;
     }
+
+    // Get user role
+    const role = await user.getRole();
 
     // Add user info to request
     req.user = {
       id: user.id,
       username: user.username,
-      email: user.email,
-      role: user.role,
+      email: user.email || '',
+      role: role,
     };
 
     next();
@@ -76,4 +79,5 @@ export const requireRole = (role: string) => {
   };
 };
 
-export const requireSuperadmin = requireRole('superadmin');
+export const requireSuperadmin = requireRole('Super Admin');
+export const requireFinance = requireRole('Finance Manager');

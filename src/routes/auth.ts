@@ -1,8 +1,10 @@
 import { Router, Request, Response } from 'express';
 import { body, validationResult } from 'express-validator';
-import jwt from 'jsonwebtoken';
+import * as jwt from 'jsonwebtoken';
 import { User } from '../database/models';
 import { asyncHandler } from '../middleware/errorHandler';
+
+import { Op } from 'sequelize';
 
 const router = Router();
 
@@ -10,8 +12,8 @@ const router = Router();
 const validateLogin = [
   body('username')
     .trim()
-    .isLength({ min: 3, max: 50 })
-    .withMessage('Username must be between 3 and 50 characters'),
+    .isLength({ min: 3, max: 100 })
+    .withMessage('Username/Email must be between 3 and 100 characters'),
   body('password')
     .isLength({ min: 6 })
     .withMessage('Password must be at least 6 characters long'),
@@ -31,9 +33,15 @@ router.post('/login', validateLogin, asyncHandler(async (req: Request, res: Resp
   const { username, password } = req.body;
 
   try {
-    // Find user by username
+    // Find user by email or name
     const user = await User.findOne({
-      where: { username, isActive: true },
+      where: {
+        status: 'active',
+        [Op.or]: [
+          { email: username },
+          { name: username }
+        ]
+      },
     });
 
     if (!user) {
@@ -50,8 +58,8 @@ router.post('/login', validateLogin, asyncHandler(async (req: Request, res: Resp
       });
     }
 
-    // Update last login
-    await user.update({ lastLoginAt: new Date() });
+    // Get user role
+    const role = await user.getRole();
 
     // Generate JWT token
     const token = jwt.sign(
@@ -59,7 +67,7 @@ router.post('/login', validateLogin, asyncHandler(async (req: Request, res: Resp
         id: user.id,
         username: user.username,
         email: user.email,
-        role: user.role,
+        role: role,
       },
       process.env['JWT_SECRET']!,
       {
@@ -74,7 +82,7 @@ router.post('/login', validateLogin, asyncHandler(async (req: Request, res: Resp
         id: user.id,
         username: user.username,
         email: user.email,
-        role: user.role,
+        role: role,
       },
       token,
     });

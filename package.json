@@ -11,6 +11,7 @@
     "build:backend": "tsc",
     "build:frontend": "cd frontend && npm run build",
     "start": "node dist/server/index.js",
+    "start:prod": "node dist/server/index.js",
     "install:all": "npm install && cd frontend && npm install",
     "db:migrate": "ts-node src/database/migrate.ts",
     "db:seed": "ts-node src/database/seed.ts"

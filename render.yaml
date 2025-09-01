@@ -1,12 +1,59 @@
 services:
+  # Backend API Service
   - type: web
-    name: fynito-admin-portal
+    name: fynito-admin-backend
+    env: node
+    buildCommand: npm install && npm run build:backend
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5000
+      - key: DB_HOST
+        value: 88.222.212.192
+      - key: DB_PORT
+        value: 3306
+      - key: DB_NAME
+        value: fynito_admin
+      - key: DB_USER
+        value: Fynito
+      - key: DB_PASSWORD
+        value: Fynito
+      - key: JWT_SECRET
+        value: your_super_secret_jwt_key_here
+      - key: JWT_EXPIRES_IN
+        value: 24h
+      - key: RAZORPAY_KEY_ID
+        value: rzp_test_RBU1qWeDXMeWZZ
+      - key: RAZORPAY_KEY_SECRET
+        value: VBxDAxJic3mpQ6gEFyvQ3zD4
+      - key: RAZORPAY_MERCHANT_ID
+        value: OcMLVZATeZMsGc
+      - key: UPLOAD_PATH
+        value: ./uploads
+      - key: MAX_FILE_SIZE
+        value: 5242880
+      - key: RATE_LIMIT_WINDOW_MS
+        value: 900000
+      - key: RATE_LIMIT_MAX_REQUESTS
+        value: 100
+      - key: LOG_LEVEL
+        value: info
+      - key: SOCKET_CORS_ORIGIN
+        value: https://fynito-admin-frontend.onrender.com
+
+  # Frontend Service
+  - type: web
+    name: fynito-admin-frontend
     env: node
     buildCommand: cd frontend && npm install && npm run build:static
-    startCommand: cd frontend/dist && npm install && npm start
+    startCommand: cd frontend/dist && npm start
     rootDir: frontend
     envVars:
       - key: NODE_ENV
         value: production
       - key: PORT
         value: 10000
+      - key: VITE_API_URL
+        value: https://fynito-admin-backend.onrender.com

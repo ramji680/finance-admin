@@ -22,7 +22,7 @@ const validateTicketCreation = [
     .withMessage('Priority must be low, medium, high, or urgent'),
   body('category')
     .optional()
-    .isIn(['technical', 'billing', 'general', 'restaurant', 'order'])
+    .isIn(['technical', 'billing', 'general', 'support'])
     .withMessage('Invalid category'),
   body('requesterName')
     .trim()
@@ -95,15 +95,15 @@ router.get('/tickets', validatePagination, asyncHandler(async (req: Request, res
     }
 
     if (assignedTo) {
-      whereClause.assignedTo = parseInt(assignedTo as string);
+      whereClause.assigned_to = parseInt(assignedTo as string);
     }
 
     if (search) {
       whereClause[Op.or] = [
         { subject: { [Op.like]: `%${search}%` } },
         { description: { [Op.like]: `%${search}%` } },
-        { requesterName: { [Op.like]: `%${search}%` } },
-        { requesterEmail: { [Op.like]: `%${search}%` } },
+        { requester_name: { [Op.like]: `%${search}%` } },
+        { requester_email: { [Op.like]: `%${search}%` } },
       ];
     }
 
@@ -114,14 +114,14 @@ router.get('/tickets', validatePagination, asyncHandler(async (req: Request, res
         {
           model: User,
           as: 'assignedUser',
-          attributes: ['id', 'username', 'email'],
+          attributes: ['id', 'name', 'email'],
         },
       ],
       limit,
       offset,
       order: [
         ['priority', 'DESC'],
-        ['createdAt', 'DESC'],
+        ['created_at', 'DESC'],
       ],
     });
 
@@ -164,7 +164,7 @@ router.post('/tickets', validateTicketCreation, asyncHandler(async (req: Request
         {
           model: User,
           as: 'assignedUser',
-          attributes: ['id', 'username', 'email'],
+          attributes: ['id', 'name', 'email'],
         },
       ],
     });
@@ -190,7 +190,7 @@ router.get('/tickets/:id', asyncHandler(async (req: Request, res: Response) => {
         {
           model: User,
           as: 'assignedUser',
-          attributes: ['id', 'username', 'email'],
+          attributes: ['id', 'name', 'email'],
         },
       ],
     });
@@ -247,7 +247,7 @@ router.put('/tickets/:id', validateTicketUpdate, asyncHandler(async (req: Reques
         {
           model: User,
           as: 'assignedUser',
-          attributes: ['id', 'username', 'email'],
+          attributes: ['id', 'name', 'email'],
         },
       ],
     });
@@ -281,7 +281,7 @@ router.get('/stats', asyncHandler(async (_req: Request, res: Response) => {
     // Get current month stats
     const currentMonthTickets = await SupportTicket.count({
       where: {
-        createdAt: {
+        created_at: {
           [Op.gte]: new Date(currentYear, currentMonth - 1, 1),
           [Op.lt]: new Date(currentYear, currentMonth, 1),
         },
@@ -335,10 +335,9 @@ router.get('/agents', asyncHandler(async (_req: Request, res: Response) => {
   try {
     const agents = await User.findAll({
       where: { 
-        role: 'superadmin',
-        isActive: true,
+        status: 'active',
       },
-      attributes: ['id', 'username', 'email'],
+      attributes: ['id', 'name', 'email'],
     });
 
     return res.json({

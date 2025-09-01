@@ -1,13 +1,33 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Outlet } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Header from './Header';
 
 const Layout: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 1024);
+      if (window.innerWidth >= 1024) {
+        setSidebarOpen(false);
+      }
+    };
+
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   const toggleSidebar = () => {
     setSidebarOpen(!sidebarOpen);
+  };
+
+  const closeSidebar = () => {
+    if (isMobile) {
+      setSidebarOpen(false);
+    }
   };
 
   return (
@@ -16,7 +36,9 @@ const Layout: React.FC = () => {
       <Sidebar isOpen={sidebarOpen} onToggle={toggleSidebar} />
       
       {/* Main Content */}
-      <div className="lg:ml-64 transition-all duration-300">
+      <div className={`transition-all duration-300 ease-in-out ${
+        sidebarOpen && isMobile ? 'ml-0' : 'lg:ml-64'
+      }`}>
         {/* Header */}
         <Header onSidebarToggle={toggleSidebar} />
         
@@ -25,6 +47,14 @@ const Layout: React.FC = () => {
           <Outlet />
         </main>
       </div>
+
+      {/* Mobile Overlay */}
+      {sidebarOpen && isMobile && (
+        <div 
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-30 lg:hidden"
+          onClick={closeSidebar}
+        />
+      )}
     </div>
   );
 };

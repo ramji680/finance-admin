@@ -1,0 +1,272 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const express_validator_1 = require("express-validator");
+const models_1 = require("../database/models");
+const errorHandler_1 = require("../middleware/errorHandler");
+const sequelize_1 = require("sequelize");
+const router = (0, express_1.Router)();
+// Validation middleware
+const validateUserCreation = [
+    (0, express_validator_1.body)('name')
+        .trim()
+        .isLength({ min: 2, max: 255 })
+        .withMessage('Name must be between 2 and 255 characters'),
+    (0, express_validator_1.body)('email')
+        .isEmail()
+        .withMessage('Valid email is required'),
+    (0, express_validator_1.body)('mobile')
+        .optional()
+        .isLength({ min: 10, max: 15 })
+        .withMessage('Valid mobile number is required'),
+    (0, express_validator_1.body)('status')
+        .optional()
+        .isIn(['active', 'inactive'])
+        .withMessage('Status must be active or inactive'),
+];
+// GET /api/users - Get all users with pagination and filters
+router.get('/', (0, errorHandler_1.asyncHandler)(async (req, res) => {
+    try {
+        const page = parseInt(req.query['page']) || 1;
+        const limit = parseInt(req.query['limit']) || 10;
+        const offset = (page - 1) * limit;
+        const { search, status } = req.query;
+        const whereClause = {};
+        if (search) {
+            whereClause[sequelize_1.Op.or] = [
+                { name: { [sequelize_1.Op.like]: `%${search}%` } },
+                { email: { [sequelize_1.Op.like]: `%${search}%` } },
+                { mobile: { [sequelize_1.Op.like]: `%${search}%` } },
+            ];
+        }
+        if (status) {
+            whereClause.status = status;
+        }
+        // Get users with pagination
+        const { count } = await models_1.User.findAndCountAll({
+            where: whereClause,
+            limit,
+            offset,
+            order: [['name', 'ASC']],
+        });
+        // Get user roles using raw SQL
+        const [userRolesResult] = await models_1.sequelize.query(`
+      SELECT 
+        u.id,
+        u.name,
+        u.email,
+        u.mobile,
+        u.status,
+        u.created_at,
+        u.updated_at,
+        r.name as role_name
+      FROM users u
+      LEFT JOIN model_has_roles mhr ON u.id = mhr.model_id
+      LEFT JOIN roles r ON mhr.role_id = r.id
+      WHERE u.status = 'active'
+      ORDER BY u.name ASC
+      LIMIT ? OFFSET ?
+    `, {
+            replacements: [limit, offset]
+        });
+        const usersWithRoles = userRolesResult.map(user => ({
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            mobile: user.mobile,
+            status: user.status,
+            role: user.role_name || 'User',
+            created_at: user.created_at,
+            updated_at: user.updated_at
+        }));
+        return res.json({
+            users: usersWithRoles,
+            pagination: {
+                page,
+                limit,
+                total: count,
+                totalPages: Math.ceil(count / limit),
+            },
+        });
+    }
+    catch (error) {
+        console.error('Get users error:', error);
+        return res.status(500).json({
+            error: 'Failed to fetch users',
+        });
+    }
+}));
+// GET /api/users/:id - Get user by ID
+router.get('/:id', (0, errorHandler_1.asyncHandler)(async (req, res) => {
+    try {
+        const { id } = req.params;
+        // Get user with role using raw SQL
+        const [userResult] = await models_1.sequelize.query(`
+      SELECT 
+        u.id,
+        u.name,
+        u.email,
+        u.mobile,
+        u.status,
+        u.created_at,
+        u.updated_at,
+        r.name as role_name
+      FROM users u
+      LEFT JOIN model_has_roles mhr ON u.id = mhr.model_id
+      LEFT JOIN roles r ON mhr.role_id = r.id
+      WHERE u.id = ?
+    `, {
+            replacements: [id]
+        });
+        if (!userResult || userResult.length === 0) {
+            return res.status(404).json({
+                error: 'User not found',
+            });
+        }
+        const user = userResult[0];
+        return res.json({
+            user: {
+                id: user.id,
+                name: user.name,
+                email: user.email,
+                mobile: user.mobile,
+                status: user.status,
+                role: user.role_name || 'User',
+                created_at: user.created_at,
+                updated_at: user.updated_at
+            }
+        });
+    }
+    catch (error) {
+        console.error('Get user error:', error);
+        return res.status(500).json({
+            error: 'Failed to fetch user',
+        });
+    }
+}));
+// POST /api/users - Create new user
+router.post('/', validateUserCreation, (0, errorHandler_1.asyncHandler)(async (req, res) => {
+    const errors = (0, express_validator_1.validationResult)(req);
+    if (!errors.isEmpty()) {
+        return res.status(400).json({
+            error: 'Validation failed',
+            details: errors.array(),
+        });
+    }
+    try {
+        const userData = req.body;
+        // Create the user
+        const user = await models_1.User.create(userData);
+        return res.status(201).json({
+            message: 'User created successfully',
+            user,
+        });
+    }
+    catch (error) {
+        console.error('Create user error:', error);
+        return res.status(500).json({
+            error: 'Failed to create user',
+        });
+    }
+}));
+// PUT /api/users/:id - Update user
+router.put('/:id', validateUserCreation, (0, errorHandler_1.asyncHandler)(async (req, res) => {
+    const errors = (0, express_validator_1.validationResult)(req);
+    if (!errors.isEmpty()) {
+        return res.status(400).json({
+            error: 'Validation failed',
+            details: errors.array(),
+        });
+    }
+    try {
+        const { id } = req.params;
+        const updateData = req.body;
+        const user = await models_1.User.findByPk(id);
+        if (!user) {
+            return res.status(404).json({
+                error: 'User not found',
+            });
+        }
+        await user.update(updateData);
+        return res.json({
+            message: 'User updated successfully',
+            user,
+        });
+    }
+    catch (error) {
+        console.error('Update user error:', error);
+        return res.status(500).json({
+            error: 'Failed to update user',
+        });
+    }
+}));
+// DELETE /api/users/:id - Delete user
+router.delete('/:id', (0, errorHandler_1.asyncHandler)(async (req, res) => {
+    try {
+        const { id } = req.params;
+        const user = await models_1.User.findByPk(id);
+        if (!user) {
+            return res.status(404).json({
+                error: 'User not found',
+            });
+        }
+        await user.destroy();
+        return res.json({
+            message: 'User deleted successfully',
+        });
+    }
+    catch (error) {
+        console.error('Delete user error:', error);
+        return res.status(500).json({
+            error: 'Failed to delete user',
+        });
+    }
+}));
+// GET /api/users/stats - Get user statistics
+router.get('/stats', (0, errorHandler_1.asyncHandler)(async (_req, res) => {
+    try {
+        // Get user statistics using raw SQL
+        const [statsResult] = await models_1.sequelize.query(`
+      SELECT 
+        COUNT(*) as total_users,
+        SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active_users,
+        SUM(CASE WHEN status = 'inactive' THEN 1 ELSE 0 END) as inactive_users,
+        COUNT(DISTINCT r.name) as total_roles
+      FROM users u
+      LEFT JOIN model_has_roles mhr ON u.id = mhr.model_id
+      LEFT JOIN roles r ON mhr.role_id = r.id
+    `);
+        const [roleStatsResult] = await models_1.sequelize.query(`
+      SELECT 
+        r.name as role_name,
+        COUNT(mhr.model_id) as user_count
+      FROM roles r
+      LEFT JOIN model_has_roles mhr ON r.id = mhr.role_id
+      LEFT JOIN users u ON mhr.model_id = u.id AND u.status = 'active'
+      GROUP BY r.id, r.name
+      ORDER BY user_count DESC
+    `);
+        const stats = statsResult[0];
+        const roleStats = roleStatsResult;
+        return res.json({
+            stats: {
+                total: stats.total_users || 0,
+                active: stats.active_users || 0,
+                inactive: stats.inactive_users || 0,
+                totalRoles: stats.total_roles || 0,
+                byRole: roleStats.map(role => ({
+                    role: role.role_name,
+                    count: role.user_count || 0
+                }))
+            }
+        });
+    }
+    catch (error) {
+        console.error('Get user stats error:', error);
+        return res.status(500).json({
+            error: 'Failed to fetch user statistics',
+        });
+    }
+}));
+exports.default = router;
+//# sourceMappingURL=users.js.map

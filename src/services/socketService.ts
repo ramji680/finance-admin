@@ -1,5 +1,5 @@
 import { Server as SocketIOServer, Socket } from 'socket.io';
-import jwt from 'jsonwebtoken';
+const jwt = require('jsonwebtoken');
 import { User, SupportTicket } from '../database/models';
 
 interface AuthenticatedSocket extends Socket {
@@ -29,7 +29,7 @@ export const setupSocketHandlers = (io: SocketIOServer): void => {
       
       // Verify user exists and is active
       const user = await User.findByPk(decoded.id);
-      if (!user || !user.isActive) {
+      if (!user || user.status !== 'active') {
         return next(new Error('Invalid or inactive user'));
       }
 
@@ -82,7 +82,7 @@ export const setupSocketHandlers = (io: SocketIOServer): void => {
         if (data.senderId === socket.userId) {
           await ticket.update({ 
             status: 'in_progress',
-            assignedTo: socket.userId,
+            assigned_to: socket.userId,
           });
 
           // Notify about ticket status change
@@ -101,7 +101,7 @@ export const setupSocketHandlers = (io: SocketIOServer): void => {
     });
 
     // Update ticket status
-    socket.on('update_ticket_status', async (data: { ticketId: number; status: string; notes?: string }) => {
+    socket.on('update_ticket_status', async (data: { ticketId: number; status: string }) => {
       try {
         const ticket = await SupportTicket.findByPk(data.ticketId);
         if (!ticket) {
@@ -109,25 +109,15 @@ export const setupSocketHandlers = (io: SocketIOServer): void => {
           return;
         }
 
-        // Update ticket
-        const updateData: any = {
+        await ticket.update({ 
           status: data.status as 'open' | 'in_progress' | 'resolved' | 'closed',
-        };
-        
-        // Only add notes if it's provided
-        if (data.notes !== undefined) {
-          updateData.notes = data.notes;
-        }
-        
-        await ticket.update(updateData);
+        });
 
-        // Notify all users in the ticket room
+        // Notify about ticket status change
         io.to(`ticket_${data.ticketId}`).emit('ticket_updated', {
           ticketId: data.ticketId,
           status: data.status,
-          notes: data.notes,
           updatedBy: socket.username,
-          updatedAt: new Date(),
         });
 
         console.log(`Ticket ${data.ticketId} status updated to ${data.status} by ${socket.username}`);
@@ -138,7 +128,7 @@ export const setupSocketHandlers = (io: SocketIOServer): void => {
     });
 
     // Assign ticket to user
-    socket.on('assign_ticket', async (data: { ticketId: number; assignedTo: number }) => {
+    socket.on('assign_ticket', async (data: { ticketId: number; assignedToId: number }) => {
       try {
         const ticket = await SupportTicket.findByPk(data.ticketId);
         if (!ticket) {
@@ -146,60 +136,36 @@ export const setupSocketHandlers = (io: SocketIOServer): void => {
           return;
         }
 
-        const assignedUser = await User.findByPk(data.assignedTo);
+        const assignedUser = await User.findByPk(data.assignedToId);
         if (!assignedUser) {
           socket.emit('error', { message: 'Assigned user not found' });
           return;
         }
 
-        // Update ticket assignment
-        await ticket.update({
-          assignedTo: data.assignedTo,
+        await ticket.update({ 
+          assigned_to: data.assignedToId,
           status: 'in_progress',
         });
 
-        // Notify all users in the ticket room
+        // Notify about ticket assignment
         io.to(`ticket_${data.ticketId}`).emit('ticket_assigned', {
           ticketId: data.ticketId,
-          assignedTo: data.assignedTo,
-          assignedToName: assignedUser.username,
+          assignedToId: data.assignedToId,
+          assignedToName: assignedUser.name,
           assignedBy: socket.username,
-          assignedAt: new Date(),
         });
 
-        console.log(`Ticket ${data.ticketId} assigned to ${assignedUser.username} by ${socket.username}`);
+        console.log(`Ticket ${data.ticketId} assigned to ${assignedUser.name} by ${socket.username}`);
       } catch (error) {
         console.error('Assign ticket error:', error);
         socket.emit('error', { message: 'Failed to assign ticket' });
       }
     });
 
-    // Typing indicator
-    socket.on('typing_start', (ticketId: number) => {
-      socket.to(`ticket_${ticketId}`).emit('user_typing', {
-        ticketId,
-        userId: socket.userId,
-        username: socket.username,
-      });
-    });
-
-    socket.on('typing_stop', (ticketId: number) => {
-      socket.to(`ticket_${ticketId}`).emit('user_stopped_typing', {
-        ticketId,
-        userId: socket.userId,
-        username: socket.username,
-      });
-    });
-
-    // Disconnect handling
+    // Handle disconnection
     socket.on('disconnect', () => {
       console.log(`User ${socket.username} (ID: ${socket.userId}) disconnected`);
     });
-  });
-
-  // Error handling
-  io.on('error', (error) => {
-    console.error('Socket.io error:', error);
   });
 };
 

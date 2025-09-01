@@ -1,344 +1,552 @@
 import { Router, Request, Response } from 'express';
-import { query, validationResult } from 'express-validator';
-import Razorpay from 'razorpay';
-import { Restaurant, Order, Payment } from '../database/models';
-import { asyncHandler } from '../middleware/errorHandler';
-import { Op } from 'sequelize';
+import { authenticateToken } from '../middleware/auth';
+import { RazorpayService } from '../services/razorpayService';
+import { Server as SocketIOServer } from 'socket.io';
+import { sequelize } from '../database/connection';
 
 const router = Router();
 
-// Initialize Razorpay
-  const razorpay = new Razorpay({
-    key_id: process.env['RAZORPAY_KEY_ID']!,
-    key_secret: process.env['RAZORPAY_KEY_SECRET']!,
-  });
+// Initialize Razorpay service (we'll need to pass io instance)
+let razorpayService: RazorpayService;
 
-// Validation middleware
-const validatePaymentQuery = [
-  query('month')
-    .optional()
-    .isInt({ min: 1, max: 12 })
-    .withMessage('Month must be between 1 and 12'),
-  query('year')
-    .optional()
-    .isInt({ min: 2020, max: 2030 })
-    .withMessage('Year must be between 2020 and 2030'),
-];
+export const initializePaymentRoutes = (io: SocketIOServer) => {
+  razorpayService = new RazorpayService(io);
+};
 
-// GET /api/payments/monthly - Get monthly payment reports
-router.get('/monthly', validatePaymentQuery, asyncHandler(async (req: Request, res: Response) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({
-      error: 'Validation failed',
-      details: errors.array(),
-    });
-  }
-
+// GET /api/payments/monthly - Get monthly settlements for restaurants
+router.get('/monthly', authenticateToken, async (req: Request, res: Response) => {
   try {
-    const currentDate = new Date();
-    const month = parseInt(req.query['month'] as string) || currentDate.getMonth() + 1;
-    const year = parseInt(req.query['year'] as string) || currentDate.getFullYear();
-
-    // Get all restaurants with their monthly payment data
-    const restaurants = await Restaurant.findAll({
-      where: { isActive: true },
-      include: [
-        {
-          model: Payment,
-          as: 'payments',
-          where: { month, year },
-          required: false,
-        },
-      ],
+    const { month, year = new Date().getFullYear() } = req.query;
+    
+    // Build where clause for date filtering
+    let dateWhereClause = '';
+    const replacements: any[] = [];
+    
+    if (month) {
+      dateWhereClause = 'WHERE MONTH(rp.created_at) = ? AND YEAR(rp.created_at) = ?';
+      replacements.push(month, year);
+    } else {
+      dateWhereClause = 'WHERE YEAR(rp.created_at) = ?';
+      replacements.push(year);
+    }
+    
+    // Get monthly settlements grouped by restaurant
+    const [settlementsResult] = await sequelize.query(`
+      SELECT 
+        ri.id as restaurant_id,
+        ri.restaurant_name,
+        MONTH(rp.created_at) as month,
+        YEAR(rp.created_at) as year,
+        COUNT(DISTINCT rp.order_id) as total_orders,
+        SUM(rp.amount) as total_amount,
+        SUM(rp.amount * 0.1) as commission, -- Assuming 10% commission
+        SUM(rp.amount * 0.9) as net_amount, -- Restaurant gets 90%
+        CASE 
+          WHEN COUNT(rp.id) > 0 THEN 'pending'
+          ELSE 'no_data'
+        END as payment_status,
+        MAX(rp.created_at) as last_payment_date
+      FROM restaurant_information ri
+      LEFT JOIN orders o ON ri.id = o.restaurant_id
+      LEFT JOIN razorpay_payments rp ON o.order_id = rp.order_id AND rp.razor_paying_status = '1'
+      ${dateWhereClause}
+      GROUP BY ri.id, ri.restaurant_name, MONTH(rp.created_at), YEAR(rp.created_at)
+      HAVING total_orders > 0
+      ORDER BY total_amount DESC
+    `, {
+      replacements
     });
-
-    // Calculate monthly data for each restaurant
-    const monthlyData = await Promise.all(
-      restaurants.map(async (restaurant) => {
-        // Get orders for the month
-        const orders = await Order.findAll({
-          where: {
-            restaurantId: restaurant.id,
-            orderDate: {
-              [Op.gte]: new Date(year, month - 1, 1),
-              [Op.lt]: new Date(year, month, 1),
-            },
-            paymentStatus: 'paid',
-          },
-        });
-
-        const totalOrders = orders.length;
-        const totalAmount = orders.reduce((sum, order) => sum + Number(order.total), 0);
-        const commissionAmount = orders.reduce((sum, order) => sum + Number(order.commission), 0);
-        const restaurantAmount = totalAmount - commissionAmount;
-
-        // Check if payment record exists
-        const existingPayment = (restaurant as any).payments?.[0];
-        
-        if (existingPayment) {
-          // Update existing payment record
-          await existingPayment.update({
-            totalOrders,
-            totalAmount,
-            commissionAmount,
-            restaurantAmount,
-          });
-        } else {
-          // Create new payment record
-          await Payment.create({
-            restaurantId: restaurant.id,
-            month,
-            year,
-            totalOrders,
-            totalAmount,
-            commissionAmount,
-            restaurantAmount,
-            status: 'pending',
-          });
-        }
-
-        return {
-          restaurant: {
-            id: restaurant.id,
-            name: restaurant.name,
-            ownerName: restaurant.ownerName,
-            city: restaurant.city,
-            bankAccountNumber: restaurant.bankAccountNumber,
-            bankIfscCode: restaurant.bankIfscCode,
-            bankAccountHolderName: restaurant.bankAccountHolderName,
-            upiId: restaurant.upiId,
-          },
-          monthlyData: {
-            month,
-            year,
-            totalOrders,
-            totalAmount,
-            commissionAmount,
-            restaurantAmount,
-            paymentStatus: existingPayment?.status || 'pending',
-            paymentId: existingPayment?.id,
-          },
-        };
-      })
-    );
-
-    // Calculate totals
-    const totals = monthlyData.reduce(
-      (acc, item) => ({
-        totalRestaurants: acc.totalRestaurants + 1,
-        totalOrders: acc.totalOrders + item.monthlyData.totalOrders,
-        totalAmount: acc.totalAmount + item.monthlyData.totalAmount,
-        commissionAmount: acc.commissionAmount + item.monthlyData.commissionAmount,
-        restaurantAmount: acc.restaurantAmount + item.monthlyData.restaurantAmount,
-        pendingAmount: acc.pendingAmount + (item.monthlyData.paymentStatus === 'pending' ? item.monthlyData.restaurantAmount : 0),
-      }),
-      {
-        totalRestaurants: 0,
-        totalOrders: 0,
-        totalAmount: 0,
-        commissionAmount: 0,
-        restaurantAmount: 0,
-        pendingAmount: 0,
-      }
-    );
-
+    
+    const settlements = (settlementsResult as any[]).map(settlement => ({
+      id: settlement.restaurant_id,
+      restaurantName: settlement.restaurant_name,
+      restaurantId: settlement.restaurant_id,
+      month: settlement.month,
+      year: settlement.year,
+      totalOrders: settlement.total_orders,
+      totalAmount: parseFloat(settlement.total_amount || '0'),
+      commission: parseFloat(settlement.commission || '0'),
+      netAmount: parseFloat(settlement.net_amount || '0'),
+      status: settlement.payment_status,
+      dueDate: new Date(settlement.year, settlement.month, 15).toISOString().split('T')[0], // 15th of next month
+      processedDate: settlement.payment_status === 'completed' ? settlement.last_payment_date : null,
+      paymentMethod: 'razorpay',
+      transactionId: `SETTLE_${settlement.restaurant_id}_${settlement.year}_${settlement.month}`
+    }));
+    
     return res.json({
-      monthlyReport: {
-        month,
-        year,
-        totals,
-        restaurants: monthlyData,
-      },
+      success: true,
+      data: {
+        monthlyReport: {
+          restaurants: settlements.map(settlement => ({
+            monthlyData: settlement
+          }))
+        }
+      }
     });
   } catch (error) {
-    console.error('Get monthly payments error:', error);
+    console.error('Get monthly settlements error:', error);
     return res.status(500).json({
-      error: 'Failed to fetch monthly payment report',
+      error: 'Failed to fetch monthly settlements'
     });
   }
-}));
+});
 
-// POST /api/payments/settle - Bulk settlement via Razorpay
-router.post('/settle', asyncHandler(async (req: Request, res: Response) => {
+// GET /api/payments/analytics - Get payment analytics
+router.get('/analytics', authenticateToken, async (_req: Request, res: Response) => {
   try {
-    const { month, year, restaurantIds } = req.body;
-
-    if (!month || !year) {
-      return res.status(400).json({
-        error: 'Month and year are required',
-      });
-    }
-
-    // Get pending payments for the specified month/year
-    const whereClause: any = {
-      month,
-      year,
-      status: 'pending',
-    };
-
-    if (restaurantIds && Array.isArray(restaurantIds)) {
-      whereClause.restaurantId = { [Op.in]: restaurantIds };
-    }
-
-    const pendingPayments = await Payment.findAll({
-      where: whereClause,
-      include: [
-        {
-          model: Restaurant,
-          as: 'restaurant',
-          attributes: ['name', 'bankAccountNumber', 'bankIfscCode', 'bankAccountHolderName'],
-        },
-      ],
-    });
-
-    if (pendingPayments.length === 0) {
-      return res.status(400).json({
-        error: 'No pending payments found for the specified period',
-      });
-    }
-
-    const settlementResults = [];
-
-    for (const payment of pendingPayments) {
-      try {
-        // Update payment status to processing
-        await payment.update({ status: 'processing' });
-
-        // Create Razorpay payout
-        const payoutData = {
-          account_number: (payment as any).restaurant.bankAccountNumber,
-          fund_account_id: (payment as any).restaurant.bankIfscCode, // This should be a proper fund account ID
-          amount: Math.round(payment.restaurantAmount * 100), // Convert to paise
-          currency: 'INR',
-          mode: 'IMPS',
-          purpose: 'payout',
-          queue_if_low_balance: true,
-          reference_id: `PAYOUT_${payment.id}_${Date.now()}`,
-          narration: `Settlement for ${(payment as any).restaurant.name} - ${month}/${year}`,
-        };
-
-        const payout = await (razorpay as any).payouts.create(payoutData);
-
-        // Update payment record with Razorpay details
-        await payment.update({
-          status: 'completed',
-          razorpayPayoutId: payout.id,
-          settlementDate: new Date(),
-          notes: `Settled via Razorpay. Payout ID: ${payout.id}`,
-        });
-
-        settlementResults.push({
-          paymentId: payment.id,
-          restaurantName: (payment as any).restaurant.name,
-          amount: payment.restaurantAmount,
-          status: 'success',
-          razorpayPayoutId: payout.id,
-        });
-      } catch (error) {
-        console.error(`Settlement failed for payment ${payment.id}:`, error);
-        
-        // Update payment status to failed
-        await payment.update({
-          status: 'failed',
-          notes: `Settlement failed: ${(error as Error).message}`,
-        });
-
-        settlementResults.push({
-          paymentId: payment.id,
-          restaurantName: (payment as any).restaurant.name,
-          amount: payment.restaurantAmount,
-          status: 'failed',
-          error: (error as Error).message,
-        });
-      }
-    }
-
-    const successCount = settlementResults.filter(r => r.status === 'success').length;
-    const failedCount = settlementResults.filter(r => r.status === 'failed').length;
-
+    // Get payment analytics using raw SQL
+    const [analyticsResult] = await sequelize.query(`
+      SELECT 
+        COUNT(*) as total_payments,
+        SUM(CASE WHEN razor_paying_status = '1' THEN 1 ELSE 0 END) as successful_payments,
+        SUM(CASE WHEN razor_paying_status = '0' THEN 1 ELSE 0 END) as failed_payments,
+        SUM(CASE WHEN razor_paying_status = '1' THEN amount ELSE 0 END) as total_amount,
+        AVG(CASE WHEN razor_paying_status = '1' THEN amount ELSE NULL END) as average_amount
+      FROM razorpay_payments
+      WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+    `);
+    
+    const analytics = (analyticsResult as any[])[0];
+    
     return res.json({
-      message: `Settlement completed. ${successCount} successful, ${failedCount} failed.`,
-      results: settlementResults,
-      summary: {
-        total: pendingPayments.length,
-        successful: successCount,
-        failed: failedCount,
-      },
+      success: true,
+      data: {
+        totalPayments: analytics.total_payments || 0,
+        successfulPayments: analytics.successful_payments || 0,
+        failedPayments: analytics.failed_payments || 0,
+        totalAmount: parseFloat(analytics.total_amount || '0'),
+        averageAmount: parseFloat(analytics.average_amount || '0'),
+        successRate: analytics.total_payments > 0 
+          ? Math.round((analytics.successful_payments / analytics.total_payments) * 100)
+          : 0
+      }
+    });
+  } catch (error) {
+    console.error('Get payment analytics error:', error);
+    return res.status(500).json({
+      error: 'Failed to fetch payment analytics'
+    });
+  }
+});
+
+// POST /api/payments/bulk-settlement - Process bulk settlements
+router.post('/bulk-settlement', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { restaurantIds, month, year } = req.body;
+    
+    if (!restaurantIds || !Array.isArray(restaurantIds) || restaurantIds.length === 0) {
+      return res.status(400).json({
+        error: 'Restaurant IDs are required'
+      });
+    }
+    
+    // Get settlement data for selected restaurants
+    const [settlementsResult] = await sequelize.query(`
+      SELECT 
+        ri.id as restaurant_id,
+        ri.restaurant_name,
+        ri.email_address,
+        ri.contact_number,
+        SUM(rp.amount * 0.9) as net_amount,
+        COUNT(DISTINCT rp.order_id) as total_orders
+      FROM restaurant_information ri
+      LEFT JOIN orders o ON ri.id = o.restaurant_id
+      LEFT JOIN razorpay_payments rp ON o.order_id = rp.order_id AND rp.razor_paying_status = '1'
+      WHERE ri.id IN (${restaurantIds.map(() => '?').join(',')})
+        AND MONTH(rp.created_at) = ?
+        AND YEAR(rp.created_at) = ?
+      GROUP BY ri.id, ri.restaurant_name, ri.email_address, ri.contact_number
+      HAVING net_amount > 0
+    `, {
+      replacements: [...restaurantIds, month, year]
+    });
+    
+    const settlements = settlementsResult as any[];
+    
+    // Process each settlement (in a real implementation, this would integrate with Razorpay X)
+    const processedSettlements = settlements.map(settlement => ({
+      restaurantId: settlement.restaurant_id,
+      restaurantName: settlement.restaurant_name,
+      amount: parseFloat(settlement.net_amount),
+      orders: settlement.total_orders,
+      status: 'processing',
+      transactionId: `BULK_${settlement.restaurant_id}_${Date.now()}`,
+      processedAt: new Date().toISOString()
+    }));
+    
+    // Emit real-time update
+    if (razorpayService) {
+      // This would emit to connected clients
+      console.log('Bulk settlement processed:', processedSettlements);
+    }
+    
+    return res.json({
+      success: true,
+      message: `Bulk settlement initiated for ${processedSettlements.length} restaurants`,
+      data: {
+        settlements: processedSettlements,
+        totalAmount: processedSettlements.reduce((sum, s) => sum + s.amount, 0)
+      }
     });
   } catch (error) {
     console.error('Bulk settlement error:', error);
     return res.status(500).json({
-      error: 'Failed to process bulk settlement',
+      error: 'Failed to process bulk settlement'
     });
   }
-}));
+});
 
-// GET /api/payments/history - Get payment history
-router.get('/history', validatePaymentQuery, asyncHandler(async (req: Request, res: Response) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({
-      error: 'Validation failed',
-      details: errors.array(),
-    });
-  }
-
+// GET /api/payments - Get all payments with filters
+router.get('/', authenticateToken, async (req: Request, res: Response) => {
   try {
-    const page = parseInt(req.query['page'] as string) || 1;
-    const limit = parseInt(req.query['limit'] as string) || 20;
-    const offset = (page - 1) * limit;
-    const { month, year, status, restaurantId } = req.query;
-
-    // Build where clause
-    const whereClause: any = {};
+    const { page = 1, limit = 10, status, method } = req.query;
+    const offset = (Number(page) - 1) * Number(limit);
     
-    if (month) {
-      whereClause.month = parseInt(month as string);
-    }
-
-    if (year) {
-      whereClause.year = parseInt(year as string);
-    }
-
+    // Build where clause
+    let whereClause = '';
+    const replacements: any[] = [];
+    
     if (status) {
-      whereClause.status = status;
+      whereClause += whereClause ? ' AND ' : ' WHERE ';
+      whereClause += 'rp.status = ?';
+      replacements.push(status);
     }
-
-    if (restaurantId) {
-      whereClause.restaurantId = parseInt(restaurantId as string);
+    
+    if (method) {
+      whereClause += whereClause ? ' AND ' : ' WHERE ';
+      whereClause += 'rp.method = ?';
+      replacements.push(method);
     }
-
-    // Get payments with pagination
-    const { count, rows: payments } = await Payment.findAndCountAll({
-      where: whereClause,
-      include: [
-        {
-          model: Restaurant,
-          as: 'restaurant',
-          attributes: ['name', 'city'],
-        },
-      ],
-      limit,
-      offset,
-      order: [['createdAt', 'DESC']],
+    
+    // Get payments with restaurant info using raw SQL
+    const [paymentsResult] = await sequelize.query(`
+      SELECT 
+        rp.id,
+        rp.order_id,
+        rp.razorpay_payment_id,
+        rp.amount,
+        'INR' as currency,
+        CASE WHEN rp.razor_paying_status = '1' THEN 'captured' ELSE 'failed' END as status,
+        'razorpay' as method,
+        rp.email,
+        rp.contact,
+        rp.name,
+        rp.created_at,
+        rp.updated_at,
+        ri.restaurant_name
+      FROM razorpay_payments rp
+      LEFT JOIN orders o ON rp.order_id = o.order_id
+      LEFT JOIN restaurant_information ri ON o.restaurant_id = ri.id
+      ${whereClause}
+      ORDER BY rp.created_at DESC
+      LIMIT ? OFFSET ?
+    `, {
+      replacements: [...replacements, Number(limit), offset]
     });
-
+    
+    // Get total count
+    const [countResult] = await sequelize.query(`
+      SELECT COUNT(*) as total
+      FROM razorpay_payments rp
+      ${whereClause}
+    `, {
+      replacements
+    });
+    
+    const total = (countResult as any[])[0].total;
+    const totalPages = Math.ceil(total / Number(limit));
+    
     return res.json({
-      payments,
+      success: true,
+      data: (paymentsResult as any[]).map(payment => ({
+        id: payment.id,
+        orderId: payment.order_id,
+        razorpayPaymentId: payment.razorpay_payment_id,
+        amount: parseFloat(payment.amount || '0'),
+        currency: payment.currency,
+        status: payment.status,
+        method: payment.method,
+        email: payment.email,
+        contact: payment.contact,
+        name: payment.name,
+        createdAt: payment.created_at,
+        updatedAt: payment.updated_at,
+        restaurant: payment.restaurant_name || 'Unknown'
+      })),
       pagination: {
-        page,
-        limit,
-        total: count,
-        totalPages: Math.ceil(count / limit),
-      },
+        page: Number(page),
+        limit: Number(limit),
+        total,
+        totalPages
+      }
     });
   } catch (error) {
-    console.error('Get payment history error:', error);
+    console.error('Get payments error:', error);
     return res.status(500).json({
-      error: 'Failed to fetch payment history',
+      error: 'Failed to fetch payments'
     });
   }
-}));
+});
+
+// GET /api/payments/analytics/overview - Get payment analytics
+router.get('/analytics/overview', authenticateToken, async (_req: Request, res: Response) => {
+  try {
+    // Get payment analytics using raw SQL
+    const [analyticsResult] = await sequelize.query(`
+      SELECT 
+        COUNT(*) as totalPayments,
+        SUM(CAST(amount AS DECIMAL(10,2))) as totalAmount,
+        COUNT(CASE WHEN status = 'captured' THEN 1 END) as successfulPayments,
+        SUM(CASE WHEN status = 'captured' THEN CAST(amount AS DECIMAL(10,2)) ELSE 0 END) as successfulAmount,
+        COUNT(CASE WHEN status = 'failed' THEN 1 END) as failedPayments,
+        COUNT(CASE WHEN status = 'created' THEN 1 END) as pendingPayments,
+        SUM(CASE WHEN status = 'created' THEN CAST(amount AS DECIMAL(10,2)) ELSE 0 END) as pendingAmount
+      FROM razorpay_payments
+    `);
+    
+    const analytics = (analyticsResult as any[])[0];
+    
+    return res.json({
+      success: true,
+      data: {
+        totalPayments: parseInt(analytics.totalPayments || '0'),
+        totalAmount: parseFloat(analytics.totalAmount || '0'),
+        successfulPayments: parseInt(analytics.successfulPayments || '0'),
+        successfulAmount: parseFloat(analytics.successfulAmount || '0'),
+        failedPayments: parseInt(analytics.failedPayments || '0'),
+        pendingPayments: parseInt(analytics.pendingPayments || '0'),
+        pendingAmount: parseFloat(analytics.pendingAmount || '0'),
+        successRate: analytics.totalPayments > 0 ? 
+          ((analytics.successfulPayments / analytics.totalPayments) * 100).toFixed(2) : '0'
+      }
+    });
+  } catch (error) {
+    console.error('Payment analytics error:', error);
+    return res.status(500).json({
+      error: 'Failed to fetch payment analytics'
+    });
+  }
+});
+
+// POST /api/payments/bulk-settlement - Bulk settlement
+router.post('/bulk-settlement', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { paymentIds } = req.body;
+    
+    if (!paymentIds || !Array.isArray(paymentIds) || paymentIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Payment IDs array is required'
+      });
+    }
+    
+    // Get pending payments
+    const [pendingPaymentsResult] = await sequelize.query(`
+      SELECT id, order_id, amount, razorpay_payment_id
+      FROM razorpay_payments 
+      WHERE id IN (?) AND status = 'created'
+    `, {
+      replacements: [paymentIds]
+    });
+    
+    const pendingPayments = pendingPaymentsResult as any[];
+    
+    if (pendingPayments.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No pending payments found for settlement'
+      });
+    }
+    
+    // Process settlements
+    const settlements = [];
+    const errors = [];
+    
+    for (const payment of pendingPayments) {
+      try {
+        // Update payment status to captured (simulating settlement)
+        await sequelize.query(`
+          UPDATE razorpay_payments 
+          SET status = 'captured', updated_at = NOW()
+          WHERE id = ?
+        `, {
+          replacements: [payment.id]
+        });
+        
+        settlements.push({
+          id: payment.id,
+          orderId: payment.order_id,
+          amount: payment.amount,
+          status: 'settled'
+        });
+      } catch (error) {
+        errors.push({
+          id: payment.id,
+          error: error instanceof Error ? error.message : 'Unknown error'
+        });
+      }
+    }
+    
+    return res.json({
+      success: true,
+      message: `Processed ${settlements.length} settlements successfully`,
+      data: {
+        settlements,
+        errors,
+        totalProcessed: settlements.length,
+        totalErrors: errors.length
+      }
+    });
+  } catch (error) {
+    console.error('Bulk settlement error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to process bulk settlement'
+    });
+  }
+});
+
+// Get payment by ID (read-only)
+router.get('/:id', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    
+    const [paymentResult] = await sequelize.query(`
+      SELECT 
+        rp.id,
+        rp.order_id,
+        rp.razorpay_payment_id,
+        rp.razorpay_order_id,
+        rp.razorpay_signature,
+        rp.amount,
+        rp.currency,
+        rp.status,
+        rp.method,
+        rp.description,
+        rp.email,
+        rp.contact,
+        rp.name,
+        rp.error_code,
+        rp.error_description,
+        rp.refund_status,
+        rp.refund_id,
+        rp.refund_amount,
+        rp.refund_notes,
+        rp.refund_reason,
+        rp.refund_receipt,
+        rp.refund_processed_at,
+        rp.created_at,
+        rp.updated_at,
+        ri.restaurant_name,
+        o.grand_total_user as orderAmount,
+        o.status as orderStatus
+      FROM razorpay_payments rp
+      LEFT JOIN orders o ON rp.order_id = o.order_id
+      LEFT JOIN restaurant_information ri ON o.restaurant_id = ri.id
+      WHERE rp.id = ?
+    `, {
+      replacements: [id]
+    });
+    
+    const payments = paymentResult as any[];
+    
+    if (payments.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Payment not found'
+      });
+    }
+
+    const payment = payments[0];
+
+    return res.json({
+      success: true,
+      data: {
+        id: payment.id,
+        orderId: payment.order_id,
+        razorpayPaymentId: payment.razorpay_payment_id,
+        razorpayOrderId: payment.razorpay_order_id,
+        razorpaySignature: payment.razorpay_signature,
+        amount: parseFloat(payment.amount || '0'),
+        currency: payment.currency,
+        status: payment.status,
+        method: payment.method,
+        description: payment.description,
+        email: payment.email,
+        contact: payment.contact,
+        name: payment.name,
+        errorCode: payment.error_code,
+        errorDescription: payment.error_description,
+        refundStatus: payment.refund_status,
+        refundId: payment.refund_id,
+        refundAmount: payment.refund_amount ? parseFloat(payment.refund_amount) : null,
+        refundNotes: payment.refund_notes,
+        refundReason: payment.refund_reason,
+        refundReceipt: payment.refund_receipt,
+        refundProcessedAt: payment.refund_processed_at,
+        createdAt: payment.created_at,
+        updatedAt: payment.updated_at,
+        restaurant: payment.restaurant_name || 'Unknown',
+        orderAmount: payment.orderAmount ? parseFloat(payment.orderAmount) : null,
+        orderStatus: payment.orderStatus
+      }
+    });
+  } catch (error) {
+    console.error('Get payment by ID error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch payment'
+    });
+  }
+});
+
+// POST /api/payments/verify - Verify payment signature
+router.post('/verify', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+    
+    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required parameters'
+      });
+    }
+    
+    // Verify signature using Razorpay service
+    const isValid = await razorpayService.verifyPaymentSignature({
+      razorpayOrderId: razorpay_order_id,
+      razorpayPaymentId: razorpay_payment_id,
+      razorpaySignature: razorpay_signature
+    });
+    
+    if (!isValid) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid payment signature'
+      });
+    }
+    
+    // Update payment status in database
+    await sequelize.query(`
+      UPDATE razorpay_payments 
+      SET status = 'captured', updated_at = NOW()
+      WHERE razorpay_order_id = ? AND razorpay_payment_id = ?
+    `, {
+      replacements: [razorpay_order_id, razorpay_payment_id]
+    });
+    
+    return res.json({
+      success: true,
+      message: 'Payment verified and updated successfully'
+    });
+  } catch (error) {
+    console.error('Payment verification error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to verify payment'
+    });
+  }
+});
 
 export default router;

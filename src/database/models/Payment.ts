@@ -3,148 +3,124 @@ import { sequelize } from '../connection';
 
 export interface PaymentAttributes {
   id: number;
-  restaurantId: number;
-  month: number;
-  year: number;
-  totalOrders: number;
-  totalAmount: number;
-  commissionAmount: number;
-  restaurantAmount: number;
-  status: 'pending' | 'processing' | 'completed' | 'failed';
-  razorpayPayoutId?: string;
-  settlementDate?: Date;
-  notes?: string;
+  name: string;
+  razor_key: string;
+  razor_order_id: string;
+  razor_secret_key: string;
+  order_id: string;
+  amount: number;
+  merchantTransactionId: string;
+  contact: string;
+  email: string;
+  razor_paying_status: '0' | '1';
+  signature: string;
+  razorpay_payment_id: string;
   createdAt?: Date;
   updatedAt?: Date;
 }
 
-export interface PaymentInstance extends Model<PaymentAttributes, PaymentCreationAttributes> {
-  restaurant?: any;
-}
+export interface PaymentCreationAttributes extends Optional<PaymentAttributes, 'id' | 'createdAt' | 'updatedAt'> {}
 
-export interface PaymentCreationAttributes extends Optional<PaymentAttributes, 'id' | 'status' | 'createdAt' | 'updatedAt'> {}
-
-export class Payment extends Model<PaymentAttributes, PaymentCreationAttributes> implements PaymentInstance {
+export class Payment extends Model<PaymentAttributes, PaymentCreationAttributes> implements PaymentAttributes {
   public id!: number;
-  public restaurantId!: number;
-  public month!: number;
-  public year!: number;
-  public totalOrders!: number;
-  public totalAmount!: number;
-  public commissionAmount!: number;
-  public restaurantAmount!: number;
-  public status!: 'pending' | 'processing' | 'completed' | 'failed';
-  public razorpayPayoutId?: string;
-  public settlementDate?: Date;
-  public notes?: string;
+  public name!: string;
+  public razor_key!: string;
+  public razor_order_id!: string;
+  public razor_secret_key!: string;
+  public order_id!: string;
+  public amount!: number;
+  public merchantTransactionId!: string;
+  public contact!: string;
+  public email!: string;
+  public razor_paying_status!: '0' | '1';
+  public signature!: string;
+  public razorpay_payment_id!: string;
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
+
+  // Virtual getters for compatibility
+  get status(): string {
+    return this.razor_paying_status === '1' ? 'captured' : 'failed';
+  }
+
+  get method(): string {
+    return 'razorpay';
+  }
+
+  get currency(): string {
+    return 'INR';
+  }
 }
 
 Payment.init(
   {
     id: {
-      type: DataTypes.INTEGER,
+      type: DataTypes.BIGINT.UNSIGNED,
       autoIncrement: true,
       primaryKey: true,
     },
-    restaurantId: {
-      type: DataTypes.INTEGER,
+    name: {
+      type: DataTypes.STRING(255),
       allowNull: false,
-      references: {
-        model: 'restaurants',
-        key: 'id',
-      },
     },
-    month: {
-      type: DataTypes.INTEGER,
+    razor_key: {
+      type: DataTypes.STRING(255),
       allowNull: false,
-      validate: {
-        min: 1,
-        max: 12,
-      },
     },
-    year: {
-      type: DataTypes.INTEGER,
+    razor_order_id: {
+      type: DataTypes.STRING(255),
       allowNull: false,
-      validate: {
-        min: 2020,
-        max: 2030,
-      },
     },
-    totalOrders: {
-      type: DataTypes.INTEGER,
+    razor_secret_key: {
+      type: DataTypes.STRING(255),
       allowNull: false,
-      defaultValue: 0,
+    },
+    order_id: {
+      type: DataTypes.STRING(255),
+      allowNull: false,
+    },
+    amount: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: false,
       validate: {
         min: 0,
       },
     },
-    totalAmount: {
-      type: DataTypes.DECIMAL(12, 2),
+    merchantTransactionId: {
+      type: DataTypes.STRING(255),
       allowNull: false,
-      defaultValue: 0,
+    },
+    contact: {
+      type: DataTypes.STRING(255),
+      allowNull: false,
+    },
+    email: {
+      type: DataTypes.STRING(255),
+      allowNull: false,
       validate: {
-        min: 0,
+        isEmail: true,
       },
     },
-    commissionAmount: {
-      type: DataTypes.DECIMAL(12, 2),
+    razor_paying_status: {
+      type: DataTypes.ENUM('0', '1'),
       allowNull: false,
-      defaultValue: 0,
-      validate: {
-        min: 0,
-      },
     },
-    restaurantAmount: {
-      type: DataTypes.DECIMAL(12, 2),
+    signature: {
+      type: DataTypes.STRING(255),
       allowNull: false,
-      defaultValue: 0,
-      validate: {
-        min: 0,
-      },
     },
-    status: {
-      type: DataTypes.ENUM('pending', 'processing', 'completed', 'failed'),
+    razorpay_payment_id: {
+      type: DataTypes.STRING(255),
       allowNull: false,
-      defaultValue: 'pending',
-    },
-    razorpayPayoutId: {
-      type: DataTypes.STRING(100),
-      allowNull: true,
-    },
-    settlementDate: {
-      type: DataTypes.DATE,
-      allowNull: true,
-    },
-    notes: {
-      type: DataTypes.TEXT,
-      allowNull: true,
     },
   },
   {
     sequelize,
-    tableName: 'payments',
+    tableName: 'razorpay_payments',
     modelName: 'Payment',
-    indexes: [
-      {
-        unique: true,
-        fields: ['restaurantId', 'month', 'year'],
-      },
-    ],
-    hooks: {
-      beforeSave: (payment: Payment) => {
-        // Calculate restaurant amount
-        if (payment.changed('totalAmount') || payment.changed('commissionAmount')) {
-          payment.restaurantAmount = payment.totalAmount - payment.commissionAmount;
-        }
-        
-        // Set settlement date when status changes to completed
-        if (payment.changed('status') && payment.status === 'completed' && !payment.settlementDate) {
-          payment.settlementDate = new Date();
-        }
-      },
-    },
+    timestamps: true,
+    createdAt: 'created_at',
+    updatedAt: 'updated_at',
   }
 );
 

@@ -1,115 +1,116 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { authApi } from '../services/api'
-import toast from 'react-hot-toast'
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import axios from 'axios';
 
 interface User {
-  id: number
-  username: string
-  email: string
-  role: string
+  id: number;
+  name: string;
+  email: string;
+  role: string;
 }
 
 interface AuthContextType {
-  user: User | null
-  isAuthenticated: boolean
-  login: (username: string, password: string) => Promise<boolean>
-  logout: () => void
-  loading: boolean
+  user: User | null;
+  isAuthenticated: boolean;
+  login: (username: string, password: string) => Promise<void>;
+  logout: () => Promise<void>;
+  loading: boolean;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined)
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export const useAuth = () => {
-  const context = useContext(AuthContext)
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider')
-  }
-  return context
-}
-
-interface AuthProviderProps {
-  children: ReactNode
-}
-
-export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null)
-  const [loading, setLoading] = useState(true)
-  const navigate = useNavigate()
+export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     // Check if user is already logged in
-    const token = localStorage.getItem('token')
-    const userData = localStorage.getItem('user')
+    const token = localStorage.getItem('authToken');
+    const savedUser = localStorage.getItem('user');
     
-    if (token && userData) {
+    if (token && savedUser) {
       try {
-        const parsedUser = JSON.parse(userData)
-        setUser(parsedUser)
-        authApi.defaults.headers.common['Authorization'] = `Bearer ${token}`
+        // Verify token with backend
+        axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+        setUser(JSON.parse(savedUser));
       } catch (error) {
-        console.error('Error parsing stored user data:', error)
-        localStorage.removeItem('token')
-        localStorage.removeItem('user')
+        console.error('Error parsing saved user:', error);
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('user');
       }
     }
     
-    setLoading(false)
-  }, [])
+    setLoading(false);
+  }, []);
 
-  const login = async (username: string, password: string): Promise<boolean> => {
+  const login = async (username: string, password: string): Promise<void> => {
+    setLoading(true);
+    
     try {
-      setLoading(true)
-      const response = await authApi.post('/auth/login', { username, password })
-      
-      const { token, user: userData } = response.data
+      // Use real backend authentication
+      const response = await axios.post('http://localhost:5000/api/auth/login', {
+        username,
+        password
+      });
+
+      const { token, user: userData } = response.data;
       
       // Store token and user data
-      localStorage.setItem('token', token)
-      localStorage.setItem('user', JSON.stringify(userData))
+      localStorage.setItem('authToken', token);
+      localStorage.setItem('user', JSON.stringify(userData));
       
-      // Set auth header for future requests
-      authApi.defaults.headers.common['Authorization'] = `Bearer ${token}`
+      // Set axios default header for future requests
+      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       
-      setUser(userData)
-      toast.success('Login successful!')
-      
-      return true
+      setUser(userData);
     } catch (error: any) {
-      const message = error.response?.data?.error || 'Login failed'
-      toast.error(message)
-      return false
+      console.error('Login error:', error);
+      if (error.response?.data?.error) {
+        throw new Error(error.response.data.error);
+      } else {
+        throw new Error('Login failed. Please check your credentials.');
+      }
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
-  const logout = () => {
-    // Clear stored data
-    localStorage.removeItem('token')
-    localStorage.removeItem('user')
+  const logout = async (): Promise<void> => {
+    setLoading(true);
     
-    // Clear auth header
-    delete authApi.defaults.headers.common['Authorization']
-    
-    setUser(null)
-    toast.success('Logged out successfully')
-    navigate('/login')
-  }
+    try {
+      // Call backend logout endpoint
+      await axios.post('http://localhost:5000/api/auth/logout');
+    } catch (error) {
+      console.error('Logout error:', error);
+    } finally {
+      // Clear local storage and state regardless of backend response
+      localStorage.removeItem('authToken');
+      localStorage.removeItem('user');
+      delete axios.defaults.headers.common['Authorization'];
+      setUser(null);
+      setLoading(false);
+    }
+  };
 
   const value: AuthContextType = {
     user,
     isAuthenticated: !!user,
     login,
     logout,
-    loading,
-  }
+    loading
+  };
 
   return (
     <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
-  )
-}
+  );
+};
 
-export default AuthContext
+export const useAuth = (): AuthContextType => {
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+};

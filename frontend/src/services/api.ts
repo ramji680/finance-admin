@@ -1,114 +1,117 @@
-import axios from 'axios'
+import axios from 'axios';
 
-// Create axios instance for auth endpoints
-export const authApi = axios.create({
-  baseURL: '/api',
+// API base configuration
+const api = axios.create({
+  baseURL: 'http://localhost:5000/api',
   timeout: 10000,
-})
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
 
-// Create axios instance for authenticated endpoints
-export const api = axios.create({
-  baseURL: '/api',
-  timeout: 10000,
-})
-
-// Add auth token to requests
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token')
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
+// Request interceptor for authentication
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('authToken');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
   }
-  return config
-})
+);
 
-// Handle auth errors
+// Response interceptor for error handling
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem('token')
-      localStorage.removeItem('user')
-      window.location.href = '/login'
+      localStorage.removeItem('authToken');
+      window.location.href = '/login';
     }
-    return Promise.reject(error)
+    return Promise.reject(error);
   }
-)
+);
 
 // Dashboard API
 export const dashboardApi = {
-  getStats: () => api.get('/dashboard/stats'),
-  getAnalytics: (startDate?: string, endDate?: string) => 
-    api.get('/dashboard/analytics', { params: { startDate, endDate } }),
-  getRecentActivity: (limit?: number) => 
-    api.get('/dashboard/recent-activity', { params: { limit } }),
-}
+  getStats: async () => {
+    return api.get('/dashboard/stats');
+  },
+  
+  getAnalytics: async (params: { startDate: string; endDate: string }) => {
+    return api.get('/dashboard/analytics', { params });
+  },
+  
+  getRecentActivity: async (params: { limit: number }) => {
+    return api.get('/dashboard/recent-activity', { params });
+  }
+};
 
-// Restaurant API
-export const restaurantApi = {
-  getAll: (params?: {
-    page?: number
-    limit?: number
-    search?: string
-    city?: string
-    status?: string
-    cuisine?: string
-  }) => api.get('/restaurants', { params }),
+// Payments API
+export const paymentsApi = {
+  getAll: async (params: { page: number; limit: number; month?: number; year: number; status?: string }) => {
+    return api.get('/payments/monthly', { params });
+  },
   
-  getById: (id: number) => api.get(`/restaurants/${id}`),
+  getAnalytics: async () => {
+    return api.get('/payments/analytics');
+  },
   
-  getOrders: (id: number, params?: {
-    page?: number
-    limit?: number
-    status?: string
-    paymentStatus?: string
-    startDate?: string
-    endDate?: string
-  }) => api.get(`/restaurants/${id}/orders`, { params }),
+  getMonthly: async (params: { month?: number; year: number }) => {
+    return api.get('/payments/monthly', { params });
+  },
   
-  getPayments: (id: number) => api.get(`/restaurants/${id}/payments`),
-  
-  update: (id: number, data: any) => api.put(`/restaurants/${id}`, data),
-}
-
-// Payment API
-export const paymentApi = {
-  getMonthly: (month?: number, year?: number) => 
-    api.get('/payments/monthly', { params: { month, year } }),
-  
-  settle: (data: { month: number; year: number; restaurantIds?: number[] }) => 
-    api.post('/payments/settle', data),
-  
-  getHistory: (params?: {
-    page?: number
-    limit?: number
-    month?: number
-    year?: number
-    status?: string
-    restaurantId?: number
-  }) => api.get('/payments/history', { params }),
-}
+  settle: async (data: { month: number; year: number; restaurantIds: number[] }) => {
+    return api.post('/payments/bulk-settlement', data);
+  }
+};
 
 // Support API
 export const supportApi = {
-  getTickets: (params?: {
-    page?: number
-    limit?: number
-    status?: string
-    priority?: string
-    category?: string
-    search?: string
-    assignedTo?: number
-  }) => api.get('/support/tickets', { params }),
+  getTickets: async (params: { page: number; limit: number; search?: string; status?: string; priority?: string; category?: string }) => {
+    return api.get('/support/tickets', { params });
+  },
   
-  createTicket: (data: any) => api.post('/support/tickets', data),
-  
-  getTicket: (id: number) => api.get(`/support/tickets/${id}`),
-  
-  updateTicket: (id: number, data: any) => api.put(`/support/tickets/${id}`, data),
-  
-  getStats: () => api.get('/support/stats'),
-  
-  getAgents: () => api.get('/support/agents'),
-}
+  getStats: async () => {
+    return api.get('/support/stats');
+  }
+};
 
-export default api
+// Restaurants API
+export const restaurantsApi = {
+  getAll: async (params: { page: number; limit: number; search?: string; status?: string; category?: string }) => {
+    return api.get('/restaurants', { params });
+  }
+};
+
+// Users API
+export const usersApi = {
+  getAll: async (params: { page: number; limit: number; search?: string; status?: string; role?: string }) => {
+    return api.get('/users', { params });
+  },
+  
+  getById: async (id: number) => {
+    return api.get(`/users/${id}`);
+  },
+  
+  create: async (data: { name: string; email: string; mobile?: string; status?: string }) => {
+    return api.post('/users', data);
+  },
+  
+  update: async (id: number, data: { name?: string; email?: string; mobile?: string; status?: string }) => {
+    return api.put(`/users/${id}`, data);
+  },
+  
+  delete: async (id: number) => {
+    return api.delete(`/users/${id}`);
+  },
+  
+  getStats: async () => {
+    return api.get('/users/stats');
+  }
+};
+
+export default api;

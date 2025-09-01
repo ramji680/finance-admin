@@ -3,48 +3,84 @@ import { sequelize } from '../connection';
 
 export interface OrderAttributes {
   id: number;
-  restaurantId: number;
-  orderNumber: string;
-  customerName: string;
-  customerPhone: string;
-  customerAddress: string;
-  items: string;
-  subtotal: number;
-  tax: number;
-  deliveryFee: number;
-  total: number;
-  commission: number;
-  restaurantAmount: number;
-  status: 'pending' | 'confirmed' | 'preparing' | 'ready' | 'delivered' | 'cancelled';
-  paymentStatus: 'pending' | 'paid' | 'failed' | 'refunded';
-  paymentMethod: 'cash' | 'card' | 'upi' | 'online';
-  orderDate: Date;
-  deliveryDate?: Date;
+  slug?: string;
+  payment_method: 'razorpay' | 'phonepe' | 'cash' | 'wallet';
+  online_order_id?: string;
+  user_id: number;
+  restaurant_id: number;
+  order_id: string;
+  address_id?: number;
+  address: string;
+  note_for_restaurant?: string;
+  menu_detail: string;
+  variation?: string;
+  option?: string;
+  offer_id?: string;
+  discount_type: 'percentage' | 'rupee' | '';
+  discount?: string;
+  menu_price: string;
+  finel_amount: string;
+  paying_id?: string;
+  delivery_type: 'case on delivery' | 'online';
+  paying_status: '0' | '1';
+  status: 'Pending' | 'Confirmed' | 'Delivered' | 'Processing' | 'Out For Delivery' | 'Returned' | 'Failed To Deliver' | 'Canceled' | 'Scheduled' | 'Reject' | 'Ready' | 'Picked Up';
+  reject_description?: string;
+  preparation_time?: string;
+  otp?: number;
+  otp_verify: '0' | '1';
+  gst_charge?: string;
+  ship_charge?: string;
+  ship_user_charge?: number;
+  packaging_chanrges?: number;
+  grand_total: string;
+  grand_total_user: number;
+  platform_fees?: string;
+  km?: string;
+  track_status?: number;
+  reach_time?: string;
   createdAt?: Date;
   updatedAt?: Date;
 }
 
-export interface OrderCreationAttributes extends Optional<OrderAttributes, 'id' | 'commission' | 'restaurantAmount' | 'status' | 'paymentStatus' | 'createdAt' | 'updatedAt'> {}
+export interface OrderCreationAttributes extends Optional<OrderAttributes, 'id' | 'payment_method' | 'user_id' | 'restaurant_id' | 'order_id' | 'address' | 'menu_detail' | 'discount_type' | 'menu_price' | 'finel_amount' | 'delivery_type' | 'paying_status' | 'status' | 'otp_verify' | 'grand_total' | 'grand_total_user' | 'createdAt' | 'updatedAt'> {}
 
 export class Order extends Model<OrderAttributes, OrderCreationAttributes> implements OrderAttributes {
   public id!: number;
-  public restaurantId!: number;
-  public orderNumber!: string;
-  public customerName!: string;
-  public customerPhone!: string;
-  public customerAddress!: string;
-  public items!: string;
-  public subtotal!: number;
-  public tax!: number;
-  public deliveryFee!: number;
-  public total!: number;
-  public commission!: number;
-  public restaurantAmount!: number;
-  public status!: 'pending' | 'confirmed' | 'preparing' | 'ready' | 'delivered' | 'cancelled';
-  public paymentStatus!: 'pending' | 'paid' | 'failed' | 'refunded';
-  public paymentMethod!: 'cash' | 'card' | 'upi' | 'online';
-  public orderDate!: Date;
-  public deliveryDate?: Date;
+  public slug?: string;
+  public payment_method!: 'razorpay' | 'phonepe' | 'cash' | 'wallet';
+  public online_order_id?: string;
+  public user_id!: number;
+  public restaurant_id!: number;
+  public order_id!: string;
+  public address_id?: number;
+  public address!: string;
+  public note_for_restaurant?: string;
+  public menu_detail!: string;
+  public variation?: string;
+  public option?: string;
+  public offer_id?: string;
+  public discount_type!: 'percentage' | 'rupee' | '';
+  public discount?: string;
+  public menu_price!: string;
+  public finel_amount!: string;
+  public paying_id?: string;
+  public delivery_type!: 'case on delivery' | 'online';
+  public paying_status!: '0' | '1';
+  public status!: 'Pending' | 'Confirmed' | 'Delivered' | 'Processing' | 'Out For Delivery' | 'Returned' | 'Failed To Deliver' | 'Canceled' | 'Scheduled' | 'Reject' | 'Ready' | 'Picked Up';
+  public reject_description?: string;
+  public preparation_time?: string;
+  public otp?: number;
+  public otp_verify!: '0' | '1';
+  public gst_charge?: string;
+  public ship_charge?: string;
+  public ship_user_charge?: number;
+  public packaging_chanrges?: number;
+  public grand_total!: string;
+  public grand_total_user!: number;
+  public platform_fees?: string;
+  public km?: string;
+  public track_status?: number;
+  public reach_time?: string;
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
 }
@@ -52,124 +88,161 @@ export class Order extends Model<OrderAttributes, OrderCreationAttributes> imple
 Order.init(
   {
     id: {
-      type: DataTypes.INTEGER,
+      type: DataTypes.INTEGER.UNSIGNED,
       autoIncrement: true,
       primaryKey: true,
     },
-    restaurantId: {
-      type: DataTypes.INTEGER,
+    slug: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+    },
+    payment_method: {
+      type: DataTypes.ENUM('razorpay', 'phonepe', 'cash', 'wallet'),
+      allowNull: false,
+    },
+    online_order_id: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+    },
+    user_id: {
+      type: DataTypes.INTEGER.UNSIGNED,
       allowNull: false,
       references: {
-        model: 'restaurants',
+        model: 'users',
         key: 'id',
       },
     },
-    orderNumber: {
-      type: DataTypes.STRING(50),
+    restaurant_id: {
+      type: DataTypes.INTEGER.UNSIGNED,
+      allowNull: false,
+      references: {
+        model: 'restaurant_information',
+        key: 'id',
+      },
+    },
+    order_id: {
+      type: DataTypes.STRING(255),
       allowNull: false,
       unique: true,
-      validate: {
-        notEmpty: true,
-      },
     },
-    customerName: {
-      type: DataTypes.STRING(100),
-      allowNull: false,
-      validate: {
-        len: [2, 100],
-        notEmpty: true,
-      },
+    address_id: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
     },
-    customerPhone: {
-      type: DataTypes.STRING(15),
-      allowNull: false,
-      validate: {
-        len: [10, 15],
-        notEmpty: true,
-      },
-    },
-    customerAddress: {
+    address: {
       type: DataTypes.TEXT,
       allowNull: false,
-      validate: {
-        notEmpty: true,
-      },
     },
-    items: {
+    note_for_restaurant: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+    },
+    menu_detail: {
       type: DataTypes.TEXT,
       allowNull: false,
-      validate: {
-        notEmpty: true,
-      },
     },
-    subtotal: {
-      type: DataTypes.DECIMAL(10, 2),
-      allowNull: false,
-      validate: {
-        min: 0,
-      },
+    variation: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
     },
-    tax: {
-      type: DataTypes.DECIMAL(10, 2),
-      allowNull: false,
-      defaultValue: 0,
-      validate: {
-        min: 0,
-      },
+    option: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
     },
-    deliveryFee: {
-      type: DataTypes.DECIMAL(10, 2),
-      allowNull: false,
-      defaultValue: 0,
-      validate: {
-        min: 0,
-      },
+    offer_id: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
     },
-    total: {
-      type: DataTypes.DECIMAL(10, 2),
+    discount_type: {
+      type: DataTypes.ENUM('percentage', 'rupee', ''),
       allowNull: false,
-      validate: {
-        min: 0,
-      },
+      defaultValue: '',
     },
-    commission: {
-      type: DataTypes.DECIMAL(10, 2),
-      allowNull: false,
-      defaultValue: 0,
-      validate: {
-        min: 0,
-      },
+    discount: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
     },
-    restaurantAmount: {
-      type: DataTypes.DECIMAL(10, 2),
+    menu_price: {
+      type: DataTypes.STRING(255),
       allowNull: false,
-      defaultValue: 0,
-      validate: {
-        min: 0,
-      },
+    },
+    finel_amount: {
+      type: DataTypes.STRING(255),
+      allowNull: false,
+    },
+    paying_id: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+    },
+    delivery_type: {
+      type: DataTypes.ENUM('case on delivery', 'online'),
+      allowNull: false,
+    },
+    paying_status: {
+      type: DataTypes.ENUM('0', '1'),
+      allowNull: false,
+      defaultValue: '0',
     },
     status: {
-      type: DataTypes.ENUM('pending', 'confirmed', 'preparing', 'ready', 'delivered', 'cancelled'),
+      type: DataTypes.ENUM('Pending', 'Confirmed', 'Delivered', 'Processing', 'Out For Delivery', 'Returned', 'Failed To Deliver', 'Canceled', 'Scheduled', 'Reject', 'Ready', 'Picked Up'),
       allowNull: false,
-      defaultValue: 'pending',
+      defaultValue: 'Pending',
     },
-    paymentStatus: {
-      type: DataTypes.ENUM('pending', 'paid', 'failed', 'refunded'),
+    reject_description: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+    },
+    preparation_time: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+    },
+    otp: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    otp_verify: {
+      type: DataTypes.ENUM('0', '1'),
       allowNull: false,
-      defaultValue: 'pending',
+      defaultValue: '0',
     },
-    paymentMethod: {
-      type: DataTypes.ENUM('cash', 'card', 'upi', 'online'),
+    gst_charge: {
+      type: DataTypes.STRING(50),
+      allowNull: true,
+    },
+    ship_charge: {
+      type: DataTypes.STRING(50),
+      allowNull: true,
+    },
+    ship_user_charge: {
+      type: DataTypes.DOUBLE,
+      allowNull: true,
+    },
+    packaging_chanrges: {
+      type: DataTypes.DOUBLE,
+      allowNull: true,
+    },
+    grand_total: {
+      type: DataTypes.STRING(50),
       allowNull: false,
-      defaultValue: 'cash',
     },
-    orderDate: {
-      type: DataTypes.DATE,
+    grand_total_user: {
+      type: DataTypes.DOUBLE,
       allowNull: false,
-      defaultValue: DataTypes.NOW,
     },
-    deliveryDate: {
-      type: DataTypes.DATE,
+    platform_fees: {
+      type: DataTypes.STRING(50),
+      allowNull: true,
+    },
+    km: {
+      type: DataTypes.STRING(50),
+      allowNull: true,
+    },
+    track_status: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    reach_time: {
+      type: DataTypes.STRING(20),
       allowNull: true,
     },
   },
@@ -177,16 +250,9 @@ Order.init(
     sequelize,
     tableName: 'orders',
     modelName: 'Order',
-    hooks: {
-      beforeSave: (order: Order) => {
-        // Calculate commission and restaurant amount
-        if (order.changed('total') || order.changed('commission')) {
-          // Commission is calculated based on restaurant's commission rate
-          // This will be updated when the order is linked to a restaurant
-          order.restaurantAmount = order.total - order.commission;
-        }
-      },
-    },
+    timestamps: true,
+    createdAt: 'created_at',
+    updatedAt: 'updated_at',
   }
 );
 

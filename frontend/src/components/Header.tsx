@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Bell, 
   Search, 
@@ -10,7 +10,9 @@ import {
   ChevronDown,
   MessageSquare,
   CreditCard,
-  AlertTriangle
+  AlertTriangle,
+  X,
+
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -24,6 +26,7 @@ const Header: React.FC<HeaderProps> = ({ onSidebarToggle }) => {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [showSearchFilters, setShowSearchFilters] = useState(false);
 
   const notifications = [
     {
@@ -33,7 +36,9 @@ const Header: React.FC<HeaderProps> = ({ onSidebarToggle }) => {
       message: 'Restaurant ABC payment processed successfully',
       time: '2 minutes ago',
       icon: CreditCard,
-      color: 'text-green-500'
+      color: 'text-green-500',
+      bgColor: 'bg-green-50',
+      borderColor: 'border-green-200'
     },
     {
       id: 2,
@@ -42,7 +47,9 @@ const Header: React.FC<HeaderProps> = ({ onSidebarToggle }) => {
       message: 'High priority ticket from Restaurant XYZ',
       time: '5 minutes ago',
       icon: MessageSquare,
-      color: 'text-orange-500'
+      color: 'text-orange-500',
+      bgColor: 'bg-orange-50',
+      borderColor: 'border-orange-200'
     },
     {
       id: 3,
@@ -51,8 +58,28 @@ const Header: React.FC<HeaderProps> = ({ onSidebarToggle }) => {
       message: 'Database backup completed successfully',
       time: '10 minutes ago',
       icon: AlertTriangle,
-      color: 'text-blue-500'
+      color: 'text-blue-500',
+      bgColor: 'bg-blue-50',
+      borderColor: 'border-blue-200'
+    },
+    {
+      id: 4,
+      type: 'payment',
+      title: 'Payment Failed',
+      message: 'Payment processing failed for Restaurant DEF',
+      time: '15 minutes ago',
+      icon: CreditCard,
+      color: 'text-red-500',
+      bgColor: 'bg-red-50',
+      borderColor: 'border-red-200'
     }
+  ];
+
+  const searchFilters = [
+    { label: 'Restaurants', value: 'restaurants', count: 45 },
+    { label: 'Payments', value: 'payments', count: 128 },
+    { label: 'Orders', value: 'orders', count: 256 },
+    { label: 'Users', value: 'users', count: 89 }
   ];
 
   const toggleDarkMode = () => {
@@ -67,12 +94,30 @@ const Header: React.FC<HeaderProps> = ({ onSidebarToggle }) => {
     console.log('Searching for:', searchQuery);
   };
 
+  const clearSearch = () => {
+    setSearchQuery('');
+    setShowSearchFilters(false);
+  };
+
+  // Close dropdowns when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (_event: MouseEvent) => {
+      if (showNotifications || showUserMenu) {
+        setShowNotifications(false);
+        setShowUserMenu(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showNotifications, showUserMenu]);
+
   return (
-    <header className="bg-white/80 backdrop-blur-xl shadow-sm border-b border-gray-100/50 sticky top-0 z-40">
-      <div className="px-6 py-4">
+    <header className="bg-white/90 backdrop-blur-xl shadow-sm border-b border-gray-100/50 sticky top-0 z-40">
+      <div className="px-4 sm:px-6 py-4">
         <div className="flex items-center justify-between">
           {/* Left Section */}
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-3 sm:space-x-4">
             {/* Mobile Menu Button */}
             <button
               onClick={onSidebarToggle}
@@ -86,8 +131,8 @@ const Header: React.FC<HeaderProps> = ({ onSidebarToggle }) => {
             </button>
 
             {/* Search Bar */}
-            <form onSubmit={handleSearch} className="hidden md:block">
-              <div className="relative">
+            <div className="relative hidden md:block">
+              <form onSubmit={handleSearch} className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <Search className="h-5 w-5 text-gray-400" />
                 </div>
@@ -95,15 +140,59 @@ const Header: React.FC<HeaderProps> = ({ onSidebarToggle }) => {
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
+                  onFocus={() => setShowSearchFilters(true)}
                   placeholder="Search restaurants, payments, tickets..."
                   className="w-80 pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-300"
                 />
-              </div>
-            </form>
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={clearSearch}
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center hover:text-gray-600 transition-colors"
+                  >
+                    <X className="h-4 w-4 text-gray-400" />
+                  </button>
+                )}
+              </form>
+
+              {/* Search Filters Dropdown */}
+              {showSearchFilters && (
+                <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-2xl border border-gray-100 py-2 z-50 animate-fade-in">
+                  <div className="px-4 py-2 border-b border-gray-100">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-semibold text-gray-900">Quick Filters</h3>
+                      <button
+                        onClick={() => setShowSearchFilters(false)}
+                        className="text-gray-400 hover:text-gray-600"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="py-1">
+                    {searchFilters.map((filter) => (
+                      <button
+                        key={filter.value}
+                        className="w-full flex items-center justify-between px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors duration-150"
+                        onClick={() => {
+                          setSearchQuery(filter.label);
+                          setShowSearchFilters(false);
+                        }}
+                      >
+                        <span>{filter.label}</span>
+                        <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
+                          {filter.count}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Right Section */}
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-2 sm:space-x-4">
             {/* Dark Mode Toggle */}
             <button
               onClick={toggleDarkMode}
@@ -135,7 +224,12 @@ const Header: React.FC<HeaderProps> = ({ onSidebarToggle }) => {
               {showNotifications && (
                 <div className="absolute right-0 mt-3 w-80 bg-white rounded-xl shadow-2xl border border-gray-100 py-2 z-50 animate-fade-in">
                   <div className="px-4 py-3 border-b border-gray-100">
-                    <h3 className="text-sm font-semibold text-gray-900">Notifications</h3>
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-semibold text-gray-900">Notifications</h3>
+                      <button className="text-xs text-blue-600 hover:text-blue-700 font-medium">
+                        Mark all read
+                      </button>
+                    </div>
                   </div>
                   <div className="max-h-96 overflow-y-auto">
                     {notifications.map((notification) => {
@@ -143,7 +237,7 @@ const Header: React.FC<HeaderProps> = ({ onSidebarToggle }) => {
                       return (
                         <div
                           key={notification.id}
-                          className="px-4 py-3 hover:bg-gray-50 transition-colors duration-150 cursor-pointer"
+                          className={`px-4 py-3 hover:bg-gray-50 transition-colors duration-150 cursor-pointer border-l-4 ${notification.borderColor}`}
                         >
                           <div className="flex items-start space-x-3">
                             <div className={`mt-1 ${notification.color}`}>
@@ -182,12 +276,12 @@ const Header: React.FC<HeaderProps> = ({ onSidebarToggle }) => {
               >
                 <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center shadow-lg">
                   <span className="text-white font-semibold text-sm">
-                    {user?.username?.charAt(0).toUpperCase() || 'A'}
+                    {user?.name?.charAt(0).toUpperCase() || 'A'}
                   </span>
                 </div>
                 <div className="hidden md:block text-left">
                   <p className="text-sm font-medium text-gray-900">
-                    {user?.username || 'Admin'}
+                    {user?.name || 'Admin'}
                   </p>
                   <p className="text-xs text-gray-500">Superadmin</p>
                 </div>
@@ -199,7 +293,7 @@ const Header: React.FC<HeaderProps> = ({ onSidebarToggle }) => {
                 <div className="absolute right-0 mt-3 w-56 bg-white rounded-xl shadow-2xl border border-gray-100 py-2 z-50 animate-fade-in">
                   <div className="px-4 py-3 border-b border-gray-100">
                     <p className="text-sm font-medium text-gray-900">
-                      {user?.username || 'Admin User'}
+                      {user?.name || 'Admin User'}
                     </p>
                     <p className="text-sm text-gray-500">
                       {user?.email || 'admin@fynito.com'}
@@ -233,17 +327,6 @@ const Header: React.FC<HeaderProps> = ({ onSidebarToggle }) => {
           </div>
         </div>
       </div>
-
-      {/* Click Outside Handlers */}
-      {(showNotifications || showUserMenu) && (
-        <div
-          className="fixed inset-0 z-30"
-          onClick={() => {
-            setShowNotifications(false);
-            setShowUserMenu(false);
-          }}
-        />
-      )}
     </header>
   );
 };

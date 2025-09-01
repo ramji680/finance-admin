@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { useQuery } from 'react-query';
+import { paymentsApi } from '../services/api';
 import { 
   Search, 
   Download, 
@@ -19,12 +21,14 @@ import {
   Shield,
   Target
 } from 'lucide-react';
+import PaymentTrendsChart from '../components/charts/PaymentTrendsChart';
+import PaymentDistributionChart from '../components/charts/PaymentDistributionChart';
 
 interface Payment {
   id: number;
   restaurantName: string;
   restaurantId: number;
-  month: string;
+  month: number;
   year: number;
   totalOrders: number;
   totalAmount: number;
@@ -38,107 +42,103 @@ interface Payment {
 }
 
 const Payments: React.FC = () => {
-  const [payments, setPayments] = useState<Payment[]>([]);
   const [filteredPayments, setFilteredPayments] = useState<Payment[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [monthFilter, setMonthFilter] = useState<string>('all');
-  const [yearFilter, setYearFilter] = useState<number>(2024);
+  const [yearFilter, setYearFilter] = useState<number>(2025);
   const [selectedPayments, setSelectedPayments] = useState<number[]>([]);
   const [showBulkSettlement, setShowBulkSettlement] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10);
+  const [chartType, setChartType] = useState<'line' | 'bar' | 'area'>('line');
 
-  // Mock data - replace with actual API calls
-  useEffect(() => {
-    const mockPayments: Payment[] = [
-      {
-        id: 1,
-        restaurantName: 'Spice Garden Restaurant',
-        restaurantId: 1,
-        month: 'March',
-        year: 2024,
-        totalOrders: 1247,
-        totalAmount: 1250000,
-        commission: 187500,
-        netAmount: 1062500,
-        status: 'pending',
-        dueDate: '2024-03-31',
-        paymentMethod: 'Razorpay X',
-      },
-      {
-        id: 2,
-        restaurantName: 'Coastal Delights',
-        restaurantId: 2,
-        month: 'March',
-        year: 2024,
-        totalOrders: 892,
-        totalAmount: 890000,
-        commission: 106800,
-        netAmount: 783200,
-        status: 'processing',
-        dueDate: '2024-03-31',
-        paymentMethod: 'Razorpay X',
-        processedDate: '2024-03-28',
-      },
-      {
-        id: 3,
-        restaurantName: 'Punjabi Dhaba',
-        restaurantId: 3,
-        month: 'March',
-        year: 2024,
-        totalOrders: 1567,
-        totalAmount: 1567000,
-        commission: 282060,
-        netAmount: 1284940,
-        status: 'completed',
-        dueDate: '2024-03-31',
-        paymentMethod: 'Razorpay X',
-        processedDate: '2024-03-27',
-        transactionId: 'TXN_001234',
-      },
-      {
-        id: 4,
-        restaurantName: 'Gujarati Thali House',
-        restaurantId: 4,
-        month: 'March',
-        year: 2024,
-        totalOrders: 0,
-        totalAmount: 0,
-        commission: 0,
-        netAmount: 0,
-        status: 'pending',
-        dueDate: '2024-03-31',
-        paymentMethod: 'Razorpay X',
-      },
-      {
-        id: 5,
-        restaurantName: 'Bengali Fish Curry',
-        restaurantId: 5,
-        month: 'March',
-        year: 2024,
-        totalOrders: 456,
-        totalAmount: 456000,
-        commission: 72960,
-        netAmount: 383040,
-        status: 'failed',
-        dueDate: '2024-03-31',
-        paymentMethod: 'Razorpay X',
-        processedDate: '2024-03-26',
-      }
-    ];
-    
-    setPayments(mockPayments);
-    setFilteredPayments(mockPayments);
-  }, []);
+  // API Queries
+  const { data: paymentsData, isLoading: paymentsLoading, error: paymentsError } = useQuery(
+    ['payments', currentPage, statusFilter, monthFilter, yearFilter],
+    () => paymentsApi.getAll({
+      page: currentPage,
+      limit: itemsPerPage,
+      month: monthFilter !== 'all' ? parseInt(monthFilter) : undefined,
+      year: yearFilter,
+      status: statusFilter !== 'all' ? statusFilter : undefined
+    }),
+    {
+      refetchInterval: 30000, // Refetch every 30 seconds
+      staleTime: 15000,
+    }
+  );
+
+  const { isLoading: analyticsLoading } = useQuery(
+    ['payments-analytics'],
+    paymentsApi.getAnalytics,
+    {
+      refetchInterval: 60000, // Refetch every minute
+      staleTime: 30000,
+    }
+  );
+
+  const { data: monthlyData, isLoading: monthlyLoading } = useQuery(
+    ['payments-monthly', monthFilter, yearFilter],
+    () => paymentsApi.getMonthly({
+      month: monthFilter !== 'all' ? parseInt(monthFilter) : undefined,
+      year: yearFilter
+    }),
+    {
+      refetchInterval: 45000, // Refetch every 45 seconds
+      staleTime: 20000,
+    }
+  );
+
+  // Transform API data to component format
+  
+  // Handle both direct data and nested data structures
+  let restaurantsData = null;
+  if (paymentsData?.data?.data?.monthlyReport?.restaurants) {
+    restaurantsData = paymentsData.data.data.monthlyReport.restaurants;
+  } else if (paymentsData?.data?.monthlyReport?.restaurants) {
+    restaurantsData = paymentsData.data.monthlyReport.restaurants;
+  } else if (Array.isArray(paymentsData?.data?.data)) {
+    restaurantsData = paymentsData.data.data;
+  } else if (Array.isArray(paymentsData?.data)) {
+    restaurantsData = paymentsData.data;
+  }
+  
+
+  
+  const payments: Payment[] = restaurantsData?.map((restaurant: any) => {
+    // Handle both nested and direct structures
+    const data = restaurant.monthlyData || restaurant;
+    return {
+      id: data.id,
+      restaurantName: data.restaurantName,
+      restaurantId: data.restaurantId,
+      month: data.month,
+      year: data.year,
+      totalOrders: data.totalOrders,
+      totalAmount: data.totalAmount,
+      commission: data.commission,
+      netAmount: data.netAmount,
+      status: data.status,
+      dueDate: data.dueDate,
+      processedDate: data.processedDate,
+      paymentMethod: data.paymentMethod,
+      transactionId: data.transactionId
+    };
+  }) || [];
+  
+
+  const totalPages = Math.ceil(payments.length / itemsPerPage);
+
+
 
   // Filter and search logic
   useEffect(() => {
     let filtered = payments.filter(payment => {
       const matchesSearch = payment.restaurantName.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesStatus = statusFilter === 'all' || payment.status === statusFilter;
-      const matchesMonth = monthFilter === 'all' || payment.month === monthFilter;
+      const matchesMonth = monthFilter === 'all' || payment.month === parseInt(monthFilter);
       const matchesYear = payment.year === yearFilter;
       
       return matchesSearch && matchesStatus && matchesMonth && matchesYear;
@@ -149,10 +149,61 @@ const Payments: React.FC = () => {
   }, [payments, searchQuery, statusFilter, monthFilter, yearFilter]);
 
   // Pagination
-  const totalPages = Math.ceil(filteredPayments.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
   const currentPayments = filteredPayments.slice(startIndex, endIndex);
+
+  // Prepare chart data
+  const prepareTrendsData = () => {
+    if (!monthlyData?.data?.monthlyReport?.restaurants) return [];
+    
+    // Group by date and aggregate
+    const groupedData = new Map();
+    
+    monthlyData.data.monthlyReport.restaurants.forEach((restaurant: any) => {
+      const date = `${restaurant.monthlyData.month}/${restaurant.monthlyData.year}`;
+      
+      if (!groupedData.has(date)) {
+        groupedData.set(date, {
+          date,
+          pending: 0,
+          processing: 0,
+          completed: 0,
+          failed: 0
+        });
+      }
+      
+      const data = groupedData.get(date);
+      const status = restaurant.monthlyData.paymentStatus;
+      const amount = restaurant.monthlyData.restaurantAmount || 0;
+      
+      if (status === 'pending') data.pending += amount;
+      else if (status === 'processing') data.processing += amount;
+      else if (status === 'completed') data.completed += amount;
+      else if (status === 'failed') data.failed += amount;
+    });
+    
+    return Array.from(groupedData.values());
+  };
+
+  const prepareDistributionData = () => {
+    if (!payments.length) return [];
+    
+    const statusCounts = new Map();
+    
+    payments.forEach(payment => {
+      const status = payment.status;
+      if (!statusCounts.has(status)) {
+        statusCounts.set(status, { status, count: 0, amount: 0 });
+      }
+      
+      const data = statusCounts.get(status);
+      data.count += 1;
+      data.amount += payment.netAmount || 0;
+    });
+    
+    return Array.from(statusCounts.values());
+  };
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -204,30 +255,40 @@ const Payments: React.FC = () => {
     if (selectedPayments.length === 0) return;
     
     setIsProcessing(true);
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 2000));
     
-    // Update status for selected payments
-    setPayments(prev => prev.map(payment => 
-      selectedPayments.includes(payment.id) 
-        ? { ...payment, status: 'processing' as const }
-        : payment
-    ));
-    
-    setSelectedPayments([]);
-    setShowBulkSettlement(false);
-    setIsProcessing(false);
+    try {
+      // Call bulk settlement API
+      await paymentsApi.settle({
+        month: parseInt(monthFilter) || new Date().getMonth() + 1,
+        year: yearFilter,
+        restaurantIds: selectedPayments
+      });
+      
+      // Update local state
+      setSelectedPayments([]);
+      setShowBulkSettlement(false);
+      
+      // Refetch data
+      // The query will automatically refetch due to refetchInterval
+    } catch (error) {
+      console.error('Bulk settlement failed:', error);
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const totalPendingAmount = payments
     .filter(p => p.status === 'pending')
-    .reduce((sum, p) => sum + p.netAmount, 0);
+    .reduce((sum, p) => sum + (p.netAmount || 0), 0);
 
   const totalCompletedAmount = payments
     .filter(p => p.status === 'completed')
-    .reduce((sum, p) => sum + p.netAmount, 0);
+    .reduce((sum, p) => sum + (p.netAmount || 0), 0);
 
-  const totalCommission = payments.reduce((sum, p) => sum + p.commission, 0);
+  const totalCommission = payments.reduce((sum, p) => sum + (p.commission || 0), 0);
+
+  const trendsData = prepareTrendsData();
+  const distributionData = prepareDistributionData();
 
   return (
     <div className="p-6 space-y-6 animate-fade-in">
@@ -263,7 +324,7 @@ const Payments: React.FC = () => {
               <Clock className="w-6 h-6 text-white" />
             </div>
           </div>
-          <div className="stat-card-value">₹{(totalPendingAmount / 100000).toFixed(1)}L</div>
+          <div className="stat-card-value">₹{totalPendingAmount.toFixed(2)}</div>
           <div className="stat-card-change negative">
             <TrendingDown className="w-4 h-4 mr-1" />
             <span>{payments.filter(p => p.status === 'pending').length}</span>
@@ -278,7 +339,7 @@ const Payments: React.FC = () => {
               <CheckCircle className="w-6 h-6 text-white" />
             </div>
           </div>
-          <div className="stat-card-value">₹{(totalCompletedAmount / 100000).toFixed(1)}L</div>
+          <div className="stat-card-value">₹{totalCompletedAmount.toFixed(2)}</div>
           <div className="stat-card-change positive">
             <TrendingUp className="w-4 h-4 mr-1" />
             <span>{payments.filter(p => p.status === 'completed').length}</span>
@@ -293,7 +354,7 @@ const Payments: React.FC = () => {
               <DollarSign className="w-6 h-6 text-white" />
             </div>
           </div>
-          <div className="stat-card-value">₹{(totalCommission / 100000).toFixed(1)}L</div>
+          <div className="stat-card-value">₹{totalCommission.toFixed(2)}</div>
           <div className="stat-card-change positive">
             <TrendingUp className="w-4 h-4 mr-1" />
             <span>+18%</span>
@@ -328,24 +389,34 @@ const Payments: React.FC = () => {
           <div className="card-header">
             <h3 className="text-lg font-semibold text-gray-900">Payment Trends</h3>
             <div className="flex items-center space-x-2">
-              <button className="p-2 rounded-lg hover:bg-gray-100 transition-colors">
-                <BarChart3 className="w-4 h-4 text-gray-600" />
+              <button 
+                className={`p-2 rounded-lg transition-colors ${chartType === 'bar' ? 'bg-blue-100 text-blue-600' : 'hover:bg-gray-100'}`}
+                onClick={() => setChartType('bar')}
+              >
+                <BarChart3 className="w-4 h-4" />
               </button>
-              <button className="p-2 rounded-lg hover:bg-gray-100 transition-colors">
-                <LineChart className="w-4 h-4 text-gray-600" />
+              <button 
+                className={`p-2 rounded-lg transition-colors ${chartType === 'line' ? 'bg-blue-100 text-blue-600' : 'hover:bg-gray-100'}`}
+                onClick={() => setChartType('line')}
+              >
+                <LineChart className="w-4 h-4" />
+              </button>
+              <button 
+                className={`p-2 rounded-lg transition-colors ${chartType === 'area' ? 'bg-blue-100 text-blue-600' : 'hover:bg-gray-100'}`}
+                onClick={() => setChartType('area')}
+              >
+                <BarChart3 className="w-4 h-4" />
               </button>
             </div>
           </div>
           <div className="card-body">
-            <div className="h-64 flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg">
-              <div className="text-center">
-                <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <BarChart3 className="w-8 h-8 text-blue-600" />
-                </div>
-                <p className="text-gray-600">Chart component will be integrated here</p>
-                <p className="text-sm text-gray-500">Monthly payment trends</p>
+            {monthlyLoading ? (
+              <div className="h-64 flex items-center justify-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
               </div>
-            </div>
+            ) : (
+              <PaymentTrendsChart data={trendsData} chartType={chartType} height={256} />
+            )}
           </div>
         </div>
 
@@ -360,18 +431,18 @@ const Payments: React.FC = () => {
             </div>
           </div>
           <div className="card-body">
-            <div className="h-64 flex items-center justify-center bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg">
-              <div className="text-center">
-                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <PieChart className="w-8 h-8 text-green-600" />
-                </div>
-                <p className="text-gray-600">Chart component will be integrated here</p>
-                <p className="text-sm text-gray-500">Payment status distribution</p>
+            {analyticsLoading ? (
+              <div className="h-64 flex items-center justify-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
               </div>
-            </div>
+            ) : (
+              <PaymentDistributionChart data={distributionData} height={256} />
+            )}
           </div>
         </div>
       </div>
+
+
 
       {/* Filters and Search */}
       <div className="card">
@@ -397,10 +468,18 @@ const Payments: React.FC = () => {
                 className="form-select"
               >
                 <option value="all">All Months</option>
-                <option value="January">January</option>
-                <option value="February">February</option>
-                <option value="March">March</option>
-                <option value="April">April</option>
+                <option value="1">January</option>
+                <option value="2">February</option>
+                <option value="3">March</option>
+                <option value="4">April</option>
+                <option value="5">May</option>
+                <option value="6">June</option>
+                <option value="7">July</option>
+                <option value="8">August</option>
+                <option value="9">September</option>
+                <option value="10">October</option>
+                <option value="11">November</option>
+                <option value="12">December</option>
               </select>
               
               <select
@@ -410,6 +489,7 @@ const Payments: React.FC = () => {
               >
                 <option value={2023}>2023</option>
                 <option value={2024}>2024</option>
+                <option value={2025}>2025</option>
               </select>
               
               <select
@@ -430,95 +510,125 @@ const Payments: React.FC = () => {
 
       {/* Payments Table */}
       <div className="table-container">
-        <table className="table">
-          <thead>
-            <tr>
-              <th className="w-12">
-                <input
-                  type="checkbox"
-                  checked={selectedPayments.length === currentPayments.length && currentPayments.length > 0}
-                  onChange={handleSelectAll}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-              </th>
-              <th>Restaurant</th>
-              <th>Period</th>
-              <th>Orders</th>
-              <th>Total Amount</th>
-              <th>Commission</th>
-              <th>Net Amount</th>
-              <th>Status</th>
-              <th>Due Date</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {currentPayments.map((payment) => (
-              <tr key={payment.id} className="hover:bg-gray-50 transition-colors duration-150">
-                <td>
+        {paymentsError ? (
+          <div className="text-center py-12">
+            <div className="text-red-600 mb-4">
+              <AlertTriangle className="w-12 h-12 mx-auto mb-2" />
+              <h3 className="text-lg font-semibold">Error Loading Payments</h3>
+              <p className="text-sm text-gray-600 mt-2">
+                {(paymentsError as any)?.response?.status === 401 
+                  ? 'Authentication required. Please log in again.'
+                  : (paymentsError as any)?.message || 'Failed to load payments data'
+                }
+              </p>
+            </div>
+          </div>
+        ) : paymentsLoading ? (
+          <div className="text-center py-12">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+          </div>
+        ) : (
+          <table className="table">
+            <thead>
+              <tr>
+                <th className="w-12">
                   <input
                     type="checkbox"
-                    checked={selectedPayments.includes(payment.id)}
-                    onChange={() => handleSelectPayment(payment.id)}
+                    checked={selectedPayments.length === currentPayments.length && currentPayments.length > 0}
+                    onChange={handleSelectAll}
                     className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                   />
-                </td>
-                <td>
-                  <div className="flex items-center space-x-3">
-                    <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
-                      <span className="text-white font-bold text-sm">
-                        {payment.restaurantName.charAt(0)}
-                      </span>
-                    </div>
-                    <div>
-                      <p className="font-medium text-gray-900">{payment.restaurantName}</p>
-                      <p className="text-sm text-gray-500">ID: {payment.restaurantId}</p>
-                    </div>
-                  </div>
-                </td>
-                <td>
-                  <div className="text-center">
-                    <p className="font-medium text-gray-900">{payment.month}</p>
-                    <p className="text-sm text-gray-500">{payment.year}</p>
-                  </div>
-                </td>
-                <td>
-                  <span className="text-sm font-medium">{payment.totalOrders.toLocaleString()}</span>
-                </td>
-                <td>
-                  <span className="text-sm font-medium">₹{(payment.totalAmount / 100000).toFixed(1)}L</span>
-                </td>
-                <td>
-                  <span className="text-sm font-medium text-blue-600">₹{(payment.commission / 100000).toFixed(1)}L</span>
-                </td>
-                <td>
-                  <span className="text-sm font-medium text-green-600">₹{(payment.netAmount / 100000).toFixed(1)}L</span>
-                </td>
-                <td>
-                  <div className="flex items-center space-x-2">
-                    {getStatusIcon(payment.status)}
-                    {getStatusBadge(payment.status)}
-                  </div>
-                </td>
-                <td>
-                  <span className="text-sm text-gray-500">{payment.dueDate}</span>
-                </td>
-                <td>
-                  <div className="flex items-center space-x-2">
-                    <button className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="View Details">
-                      <Eye className="w-4 h-4" />
-                    </button>
-                    {payment.status === 'pending' && (
-                      <button className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors" title="Process Payment">
-                        <Send className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-                </td>
+                </th>
+                <th>Restaurant</th>
+                <th>Period</th>
+                <th>Orders</th>
+                <th>Total Amount</th>
+                <th>Commission</th>
+                <th>Net Amount</th>
+                <th>Status</th>
+                <th>Due Date</th>
+                <th>Actions</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {currentPayments.length === 0 ? (
+                <tr>
+                  <td colSpan={10} className="text-center py-8 text-gray-500">
+                    {filteredPayments.length === 0 
+                      ? 'No payments found matching your filters'
+                      : 'No payments to display on this page'
+                    }
+                  </td>
+                </tr>
+              ) : (
+                currentPayments.map((payment) => (
+                <tr key={payment.id} className="hover:bg-gray-50 transition-colors duration-150">
+                  <td>
+                    <input
+                      type="checkbox"
+                      checked={selectedPayments.includes(payment.id)}
+                      onChange={() => handleSelectPayment(payment.id)}
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                  </td>
+                  <td>
+                    <div className="flex items-center space-x-3">
+                      <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+                        <span className="text-white font-bold text-sm">
+                          {payment.restaurantName.charAt(0)}
+                        </span>
+                      </div>
+                      <div>
+                        <p className="font-medium text-gray-900">{payment.restaurantName}</p>
+                        <p className="text-sm text-gray-500">ID: {payment.restaurantId}</p>
+                      </div>
+                    </div>
+                  </td>
+                  <td>
+                    <div className="text-center">
+                      <p className="font-medium text-gray-900">{payment.month}</p>
+                      <p className="text-sm text-gray-500">{payment.year}</p>
+                    </div>
+                  </td>
+                  <td>
+                    <span className="text-sm font-medium">{payment.totalOrders.toLocaleString()}</span>
+                  </td>
+                  <td>
+                    <span className="text-sm font-medium">₹{payment.totalAmount.toFixed(2)}</span>
+                  </td>
+                  <td>
+                    <span className="text-sm font-medium text-blue-600">₹{payment.commission.toFixed(2)}</span>
+                  </td>
+                  <td>
+                    <span className="text-sm font-medium text-green-600">₹{payment.netAmount.toFixed(2)}</span>
+                  </td>
+                  <td>
+                    <div className="flex items-center space-x-2">
+                      {getStatusIcon(payment.status)}
+                      {getStatusBadge(payment.status)}
+                    </div>
+                  </td>
+                  <td>
+                    <span className="text-sm text-gray-500">{payment.dueDate}</span>
+                  </td>
+                  <td>
+                    <div className="flex items-center space-x-2">
+                      <button className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="View Details">
+                        <Eye className="w-4 h-4" />
+                      </button>
+                      {payment.status === 'pending' && (
+                        <button className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors" title="Process Payment">
+                          <Send className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        )}
       </div>
 
       {/* Pagination */}

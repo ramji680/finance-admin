@@ -1,0 +1,85 @@
+import { Model, Optional } from 'sequelize';
+export interface OrderAttributes {
+    id: number;
+    slug?: string;
+    payment_method: 'razorpay' | 'phonepe' | 'cash' | 'wallet';
+    online_order_id?: string;
+    user_id: number;
+    restaurant_id: number;
+    order_id: string;
+    address_id?: number;
+    address: string;
+    note_for_restaurant?: string;
+    menu_detail: string;
+    variation?: string;
+    option?: string;
+    offer_id?: string;
+    discount_type: 'percentage' | 'rupee' | '';
+    discount?: string;
+    menu_price: string;
+    finel_amount: string;
+    paying_id?: string;
+    delivery_type: 'case on delivery' | 'online';
+    paying_status: '0' | '1';
+    status: 'Pending' | 'Confirmed' | 'Delivered' | 'Processing' | 'Out For Delivery' | 'Returned' | 'Failed To Deliver' | 'Canceled' | 'Scheduled' | 'Reject' | 'Ready' | 'Picked Up';
+    reject_description?: string;
+    preparation_time?: string;
+    otp?: number;
+    otp_verify: '0' | '1';
+    gst_charge?: string;
+    ship_charge?: string;
+    ship_user_charge?: number;
+    packaging_chanrges?: number;
+    grand_total: string;
+    grand_total_user: number;
+    platform_fees?: string;
+    km?: string;
+    track_status?: number;
+    reach_time?: string;
+    createdAt?: Date;
+    updatedAt?: Date;
+}
+export interface OrderCreationAttributes extends Optional<OrderAttributes, 'id' | 'payment_method' | 'user_id' | 'restaurant_id' | 'order_id' | 'address' | 'menu_detail' | 'discount_type' | 'menu_price' | 'finel_amount' | 'delivery_type' | 'paying_status' | 'status' | 'otp_verify' | 'grand_total' | 'grand_total_user' | 'createdAt' | 'updatedAt'> {
+}
+export declare class Order extends Model<OrderAttributes, OrderCreationAttributes> implements OrderAttributes {
+    id: number;
+    slug?: string;
+    payment_method: 'razorpay' | 'phonepe' | 'cash' | 'wallet';
+    online_order_id?: string;
+    user_id: number;
+    restaurant_id: number;
+    order_id: string;
+    address_id?: number;
+    address: string;
+    note_for_restaurant?: string;
+    menu_detail: string;
+    variation?: string;
+    option?: string;
+    offer_id?: string;
+    discount_type: 'percentage' | 'rupee' | '';
+    discount?: string;
+    menu_price: string;
+    finel_amount: string;
+    paying_id?: string;
+    delivery_type: 'case on delivery' | 'online';
+    paying_status: '0' | '1';
+    status: 'Pending' | 'Confirmed' | 'Delivered' | 'Processing' | 'Out For Delivery' | 'Returned' | 'Failed To Deliver' | 'Canceled' | 'Scheduled' | 'Reject' | 'Ready' | 'Picked Up';
+    reject_description?: string;
+    preparation_time?: string;
+    otp?: number;
+    otp_verify: '0' | '1';
+    gst_charge?: string;
+    ship_charge?: string;
+    ship_user_charge?: number;
+    packaging_chanrges?: number;
+    grand_total: string;
+    grand_total_user: number;
+    platform_fees?: string;
+    km?: string;
+    track_status?: number;
+    reach_time?: string;
+    readonly createdAt: Date;
+    readonly updatedAt: Date;
+}
+export default Order;
+//# sourceMappingURL=Order.d.ts.map
