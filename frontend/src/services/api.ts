@@ -2,7 +2,7 @@ import axios from 'axios';
 
 // API base configuration
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api` : 'http://localhost:5000/api',
+  baseURL: import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api` : 'https://finance-admin-be.onrender.com/api',
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
