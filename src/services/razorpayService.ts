@@ -9,7 +9,17 @@ export class RazorpayService {
     const keyId = process.env['RAZORPAY_KEY_ID'];
     const keySecret = process.env['RAZORPAY_KEY_SECRET'];
     
+    console.log('Razorpay Environment Check:', {
+      keyId: keyId ? 'SET' : 'NOT SET',
+      keySecret: keySecret ? 'SET' : 'NOT SET',
+      nodeEnv: process.env['NODE_ENV']
+    });
+    
     if (!keyId || !keySecret) {
+      console.error('Missing Razorpay credentials:', {
+        RAZORPAY_KEY_ID: keyId ? 'SET' : 'NOT SET',
+        RAZORPAY_KEY_SECRET: keySecret ? 'SET' : 'NOT SET'
+      });
       throw new Error('RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET are required');
     }
     

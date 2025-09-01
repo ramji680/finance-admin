@@ -22,6 +22,23 @@ const { setupSocketHandlers } = require('../services/socketService');
 const { RealtimeDataService } = require('../services/realtimeDataService');
 // Load environment variables
 dotenv.config();
+// Validate required environment variables
+const requiredEnvVars = [
+    'RAZORPAY_KEY_ID',
+    'RAZORPAY_KEY_SECRET',
+    'JWT_SECRET',
+    'DB_HOST',
+    'DB_NAME',
+    'DB_USER',
+    'DB_PASSWORD'
+];
+const missingEnvVars = requiredEnvVars.filter(envVar => !process.env[envVar]);
+if (missingEnvVars.length > 0) {
+    console.error('❌ Missing required environment variables:', missingEnvVars);
+    console.error('Available environment variables:', Object.keys(process.env).filter(key => key.startsWith('RAZORPAY') || key.startsWith('JWT') || key.startsWith('DB')));
+    process.exit(1);
+}
+console.log('✅ All required environment variables are set');
 const app = express();
 const server = createServer(app);
 const io = new SocketIOServer(server, {

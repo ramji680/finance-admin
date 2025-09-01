@@ -19,6 +19,8 @@ declare const authenticateToken: any;
 declare const errorHandler: any;
 declare const setupSocketHandlers: any;
 declare const RealtimeDataService: any;
+declare const requiredEnvVars: string[];
+declare const missingEnvVars: string[];
 declare const app: any;
 declare const server: any;
 declare const io: any;
