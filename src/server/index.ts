@@ -70,12 +70,29 @@ const limiter = rateLimit({
 // Middleware
 app.use(helmet());
 app.use(cors({
-  origin: [
-    process.env['SOCKET_CORS_ORIGIN'] || 'https://finance-admin-web.onrender.com',
-    'http://localhost:3000', // For local development
-    'https://finance-admin-web.onrender.com' // Production frontend
-  ],
-  credentials: true
+  origin: function (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    const allowedOrigins = [
+      'http://localhost:3000',
+      'http://localhost:3001',
+      'https://finance-admin-web.onrender.com',
+      'https://fynito-admin-frontend.onrender.com',
+      process.env['SOCKET_CORS_ORIGIN'],
+      process.env['FRONTEND_URL']
+    ].filter(Boolean);
+    
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.log('CORS blocked origin:', origin);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
 app.use(compression());
 app.use(morgan('combined'));
@@ -89,6 +106,15 @@ app.use('/uploads', express.static('uploads'));
 // Health check
 app.get('/health', (_req: any, res: any) => {
   res.status(200).json({ status: 'OK', timestamp: new Date().toISOString() });
+});
+
+// CORS test endpoint
+app.get('/api/cors-test', (_req: any, res: any) => {
+  res.status(200).json({ 
+    message: 'CORS is working!', 
+    origin: _req.headers.origin,
+    timestamp: new Date().toISOString() 
+  });
 });
 
 // API Routes
