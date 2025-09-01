@@ -45,7 +45,7 @@ export const RealtimeProvider: React.FC<RealtimeProviderProps> = ({ children }) 
     }
 
     try {
-      const socketUrl = 'http://localhost:5000'; // Default backend URL
+      const socketUrl = import.meta.env.VITE_API_URL ? import.meta.env.VITE_API_URL : 'http://localhost:5000'; // Backend URL
       const newSocket = io(socketUrl, {
         auth: {
           token: token

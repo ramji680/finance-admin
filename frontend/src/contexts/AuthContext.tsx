@@ -47,7 +47,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     
     try {
       // Use real backend authentication
-      const response = await axios.post('http://localhost:5000/api/auth/login', {
+      const response = await axios.post(`${import.meta.env.VITE_API_URL ? import.meta.env.VITE_API_URL : 'http://localhost:5000'}/api/auth/login`, {
         username,
         password
       });
@@ -79,7 +79,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     
     try {
       // Call backend logout endpoint
-      await axios.post('http://localhost:5000/api/auth/logout');
+      await axios.post(`${import.meta.env.VITE_API_URL ? import.meta.env.VITE_API_URL : 'http://localhost:5000'}/api/auth/logout`);
     } catch (error) {
       console.error('Logout error:', error);
     } finally {
