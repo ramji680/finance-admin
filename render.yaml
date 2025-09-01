@@ -1,5 +1,4 @@
 services:
-  # Backend API Service
   - type: web
     name: fynito-admin-backend
     env: node
@@ -43,7 +42,6 @@ services:
       - key: SOCKET_CORS_ORIGIN
         value: https://fynito-admin-frontend.onrender.com
 
-  # Frontend Service
   - type: web
     name: fynito-admin-frontend
     env: node
