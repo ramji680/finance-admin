@@ -49,7 +49,11 @@ const app = express();
 const server = createServer(app);
 const io = new SocketIOServer(server, {
   cors: {
-    origin: process.env['SOCKET_CORS_ORIGIN'] || process.env['FRONTEND_URL'] || 'http://localhost:3000',
+    origin: [
+      process.env['SOCKET_CORS_ORIGIN'] || 'https://finance-admin-web.onrender.com',
+      'http://localhost:3000', // For local development
+      'https://finance-admin-web.onrender.com' // Production frontend
+    ],
     methods: ['GET', 'POST']
   }
 });
@@ -66,7 +70,11 @@ const limiter = rateLimit({
 // Middleware
 app.use(helmet());
 app.use(cors({
-  origin: process.env['FRONTEND_URL'] || 'http://localhost:3000',
+  origin: [
+    process.env['SOCKET_CORS_ORIGIN'] || 'https://finance-admin-web.onrender.com',
+    'http://localhost:3000', // For local development
+    'https://finance-admin-web.onrender.com' // Production frontend
+  ],
   credentials: true
 }));
 app.use(compression());
