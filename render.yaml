@@ -40,7 +40,7 @@ services:
       - key: LOG_LEVEL
         value: info
       - key: SOCKET_CORS_ORIGIN
-        value: https://fynito-admin-frontend.onrender.com
+        value: https://finance-admin-fe.onrender.com
 
   - type: web
     name: fynito-admin-frontend
@@ -54,4 +54,4 @@ services:
       - key: PORT
         value: 10000
       - key: VITE_API_URL
-        value: https://fynito-admin-backend.onrender.com
+        value: https://finance-admin-be.onrender.com
