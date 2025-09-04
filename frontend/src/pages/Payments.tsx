@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useQuery } from 'react-query';
-import { paymentsApi } from '../services/api';
+import { paymentsApi, settlementsApi } from '../services/api';
 import { 
   Search, 
   Download, 
@@ -28,8 +28,7 @@ interface Payment {
   id: number;
   restaurantName: string;
   restaurantId: number;
-  month: number;
-  year: number;
+  period: string; // e.g., 2025-04-07 to 2025-04-13
   totalOrders: number;
   totalAmount: number;
   commission: number;
@@ -42,12 +41,11 @@ interface Payment {
 }
 
 const Payments: React.FC = () => {
-  const [filteredPayments, setFilteredPayments] = useState<Payment[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [monthFilter, setMonthFilter] = useState<string>('all');
-  const [yearFilter, setYearFilter] = useState<number>(2025);
-  const [selectedPayments, setSelectedPayments] = useState<number[]>([]);
+  const [weekStart, setWeekStart] = useState<string>('');
+  const [weekEnd, setWeekEnd] = useState<string>('');
+  const [selectedRestaurantIds, setSelectedRestaurantIds] = useState<number[]>([]);
   const [showBulkSettlement, setShowBulkSettlement] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -55,17 +53,27 @@ const Payments: React.FC = () => {
   const [chartType, setChartType] = useState<'line' | 'bar' | 'area'>('line');
 
   // API Queries
-  const { data: paymentsData, isLoading: paymentsLoading, error: paymentsError } = useQuery(
-    ['payments', currentPage, statusFilter, monthFilter, yearFilter],
-    () => paymentsApi.getAll({
-      page: currentPage,
-      limit: itemsPerPage,
-      month: monthFilter !== 'all' ? parseInt(monthFilter) : undefined,
-      year: yearFilter,
-      status: statusFilter !== 'all' ? statusFilter : undefined
-    }),
+  // Initialize current week on mount
+  useEffect(() => {
+    const now = new Date();
+    const day = now.getDay();
+    const diffToMonday = (day === 0 ? -6 : 1) - day;
+    const monday = new Date(now);
+    monday.setDate(now.getDate() + diffToMonday);
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    const ws = monday.toISOString().slice(0, 10);
+    const we = sunday.toISOString().slice(0, 10);
+    setWeekStart(ws);
+    setWeekEnd(we);
+  }, []);
+
+  const { data: weeklyData, isLoading: paymentsLoading, error: paymentsError, refetch } = useQuery(
+    ['settlements-weekly', weekStart, weekEnd],
+    () => settlementsApi.getWeekly({ weekStart, weekEnd }),
     {
-      refetchInterval: 30000, // Refetch every 30 seconds
+      enabled: !!weekStart && !!weekEnd,
+      refetchInterval: 30000,
       staleTime: 15000,
     }
   );
@@ -79,74 +87,67 @@ const Payments: React.FC = () => {
     }
   );
 
-  const { data: monthlyData, isLoading: monthlyLoading } = useQuery(
-    ['payments-monthly', monthFilter, yearFilter],
-    () => paymentsApi.getMonthly({
-      month: monthFilter !== 'all' ? parseInt(monthFilter) : undefined,
-      year: yearFilter
-    }),
-    {
-      refetchInterval: 45000, // Refetch every 45 seconds
-      staleTime: 20000,
-    }
-  );
+  // Charts can be adapted later; hide monthly-dependent charts for now
+  const monthlyLoading = false;
 
   // Transform API data to component format
-  
-  // Handle both direct data and nested data structures
-  let restaurantsData = null;
-  if (paymentsData?.data?.data?.monthlyReport?.restaurants) {
-    restaurantsData = paymentsData.data.data.monthlyReport.restaurants;
-  } else if (paymentsData?.data?.monthlyReport?.restaurants) {
-    restaurantsData = paymentsData.data.monthlyReport.restaurants;
-  } else if (Array.isArray(paymentsData?.data?.data)) {
-    restaurantsData = paymentsData.data.data;
-  } else if (Array.isArray(paymentsData?.data)) {
-    restaurantsData = paymentsData.data;
-  }
-  
+  const restaurantsData = useMemo(() => {
+    return weeklyData?.data?.data?.settlements || [];
+  }, [weeklyData]);
 
-  
-  const payments: Payment[] = restaurantsData?.map((restaurant: any) => {
-    // Handle both nested and direct structures
-    const data = restaurant.monthlyData || restaurant;
-    return {
-      id: data.id,
-      restaurantName: data.restaurantName,
-      restaurantId: data.restaurantId,
-      month: data.month,
-      year: data.year,
-      totalOrders: data.totalOrders,
-      totalAmount: data.totalAmount,
-      commission: data.commission,
-      netAmount: data.netAmount,
-      status: data.status,
-      dueDate: data.dueDate,
-      processedDate: data.processedDate,
-      paymentMethod: data.paymentMethod,
-      transactionId: data.transactionId
-    };
-  }) || [];
-  
+  const payments: Payment[] = useMemo(() => {
+    return (
+      restaurantsData?.map((row: any) => {
+        // Support both preview and persisted settlement shapes
+        const isPersisted = row.id && row.restaurant_id;
+        const restaurantName = row.restaurantName || row.restaurant_name || 'Restaurant';
+        const restaurantId = row.restaurantId || row.restaurant_id;
+        const totalOrders = row.orderCount || row.totalOrders || row.order_count || 0;
+        const totalAmount = row.grossAmount || row.totalAmount || parseFloat(row.gross_amount || 0);
+        const commissionRate = row.commissionRate || parseFloat(row.commission_rate || 10);
+        const commission = (typeof row.commissionAmount !== 'undefined')
+          ? row.commissionAmount
+          : (row.commission || row.commission_amount || (totalAmount * commissionRate) / 100);
+        const netAmount = (typeof row.netAmount !== 'undefined')
+          ? row.netAmount
+          : (row.net_amount || (totalAmount - commission));
+        const period = row.week_start_date && row.week_end_date ? `${row.week_start_date} to ${row.week_end_date}` : `${weekStart} to ${weekEnd}`;
+        const status = row.status || 'pending';
+        const dueDate = row.due_date || '';
+        return {
+          id: isPersisted ? row.id : restaurantId,
+          restaurantName,
+          restaurantId,
+          period,
+          totalOrders,
+          totalAmount,
+          commission,
+          netAmount,
+          status,
+          dueDate,
+          paymentMethod: 'any',
+        };
+      }) || []
+    );
+  }, [restaurantsData]);
 
-  const totalPages = Math.ceil(payments.length / itemsPerPage);
-
-
-
-  // Filter and search logic
-  useEffect(() => {
-    let filtered = payments.filter(payment => {
+  // Filtered payments derived from state (no setState in effect to avoid loops)
+  const filteredPayments = useMemo(() => {
+    return payments.filter(payment => {
       const matchesSearch = payment.restaurantName.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesStatus = statusFilter === 'all' || payment.status === statusFilter;
-      const matchesMonth = monthFilter === 'all' || payment.month === parseInt(monthFilter);
-      const matchesYear = payment.year === yearFilter;
-      
-      return matchesSearch && matchesStatus && matchesMonth && matchesYear;
+      return matchesSearch && matchesStatus;
     });
+  }, [payments, searchQuery, statusFilter]);
 
-    setFilteredPayments(filtered);
+  // Reset to first page when filters or data change
+  useEffect(() => {
     setCurrentPage(1);
-  }, [payments, searchQuery, statusFilter, monthFilter, yearFilter]);
+  }, [searchQuery, statusFilter, payments, weekStart, weekEnd]);
+
+
+
+  const totalPages = Math.ceil(filteredPayments.length / itemsPerPage);
 
   // Pagination
   const startIndex = (currentPage - 1) * itemsPerPage;
@@ -155,35 +156,7 @@ const Payments: React.FC = () => {
 
   // Prepare chart data
   const prepareTrendsData = () => {
-    if (!monthlyData?.data?.monthlyReport?.restaurants) return [];
-    
-    // Group by date and aggregate
-    const groupedData = new Map();
-    
-    monthlyData.data.monthlyReport.restaurants.forEach((restaurant: any) => {
-      const date = `${restaurant.monthlyData.month}/${restaurant.monthlyData.year}`;
-      
-      if (!groupedData.has(date)) {
-        groupedData.set(date, {
-          date,
-          pending: 0,
-          processing: 0,
-          completed: 0,
-          failed: 0
-        });
-      }
-      
-      const data = groupedData.get(date);
-      const status = restaurant.monthlyData.paymentStatus;
-      const amount = restaurant.monthlyData.restaurantAmount || 0;
-      
-      if (status === 'pending') data.pending += amount;
-      else if (status === 'processing') data.processing += amount;
-      else if (status === 'completed') data.completed += amount;
-      else if (status === 'failed') data.failed += amount;
-    });
-    
-    return Array.from(groupedData.values());
+    return [];
   };
 
   const prepareDistributionData = () => {
@@ -235,43 +208,71 @@ const Payments: React.FC = () => {
     }
   };
 
-  const handleSelectPayment = (paymentId: number) => {
-    setSelectedPayments(prev => 
-      prev.includes(paymentId) 
-        ? prev.filter(id => id !== paymentId)
-        : [...prev, paymentId]
+  const handleSelectPayment = (restaurantId: number) => {
+    setSelectedRestaurantIds(prev => 
+      prev.includes(restaurantId) 
+        ? prev.filter(id => id !== restaurantId)
+        : [...prev, restaurantId]
     );
   };
 
   const handleSelectAll = () => {
-    if (selectedPayments.length === currentPayments.length) {
-      setSelectedPayments([]);
+    if (selectedRestaurantIds.length === currentPayments.length) {
+      setSelectedRestaurantIds([]);
     } else {
-      setSelectedPayments(currentPayments.map(p => p.id));
+      setSelectedRestaurantIds(currentPayments.map(p => p.restaurantId));
     }
   };
 
   const handleBulkSettlement = async () => {
-    if (selectedPayments.length === 0) return;
+    if (selectedRestaurantIds.length === 0) return;
     
     setIsProcessing(true);
     
     try {
-      // Call bulk settlement API
-      await paymentsApi.settle({
-        month: parseInt(monthFilter) || new Date().getMonth() + 1,
-        year: yearFilter,
-        restaurantIds: selectedPayments
+      // Generate weekly settlements if not yet persisted
+      await settlementsApi.generateWeekly({ weekStart, weekEnd });
+      // Refetch and map persisted rows by restaurantId
+      const refreshed: any = await refetch();
+      const rows = refreshed?.data?.data?.settlements || [];
+      const byRestaurantId = new Map<number, any>();
+      rows.forEach((r: any) => {
+        const rid = r.restaurant_id || r.restaurantId;
+        byRestaurantId.set(rid, r);
       });
+      for (const rid of selectedRestaurantIds) {
+        const row = byRestaurantId.get(rid);
+        if (row?.id) {
+          await settlementsApi.initiate(row.id);
+        }
+      }
       
       // Update local state
-      setSelectedPayments([]);
+      setSelectedRestaurantIds([]);
       setShowBulkSettlement(false);
       
       // Refetch data
-      // The query will automatically refetch due to refetchInterval
+      await refetch();
     } catch (error) {
       console.error('Bulk settlement failed:', error);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleInitiatePayment = async (payment: Payment) => {
+    setIsProcessing(true);
+    try {
+      await settlementsApi.generateWeekly({ weekStart, weekEnd });
+      const refreshed = await refetch();
+      const rows = (refreshed as any)?.data?.data?.settlements || [];
+      const match = rows.find((r: any) => (r.restaurant_id || r.restaurantId) === payment.restaurantId);
+      if (match?.id) {
+        await settlementsApi.initiate(match.id);
+        await refetch();
+      }
+    } catch (error) {
+      console.error('Initiate settlement failed:', error);
     } finally {
       setIsProcessing(false);
     }
@@ -307,7 +308,7 @@ const Payments: React.FC = () => {
           <button 
             className="btn btn-primary"
             onClick={() => setShowBulkSettlement(true)}
-            disabled={selectedPayments.length === 0}
+            disabled={selectedRestaurantIds.length === 0}
           >
             <Zap className="w-4 h-4 mr-2" />
             Bulk Settlement
@@ -462,35 +463,18 @@ const Payments: React.FC = () => {
 
             {/* Filters */}
             <div className="flex items-center space-x-3">
-              <select
-                value={monthFilter}
-                onChange={(e) => setMonthFilter(e.target.value)}
-                className="form-select"
-              >
-                <option value="all">All Months</option>
-                <option value="1">January</option>
-                <option value="2">February</option>
-                <option value="3">March</option>
-                <option value="4">April</option>
-                <option value="5">May</option>
-                <option value="6">June</option>
-                <option value="7">July</option>
-                <option value="8">August</option>
-                <option value="9">September</option>
-                <option value="10">October</option>
-                <option value="11">November</option>
-                <option value="12">December</option>
-              </select>
-              
-              <select
-                value={yearFilter}
-                onChange={(e) => setYearFilter(Number(e.target.value))}
-                className="form-select"
-              >
-                <option value={2023}>2023</option>
-                <option value={2024}>2024</option>
-                <option value={2025}>2025</option>
-              </select>
+              <input
+                type="date"
+                value={weekStart}
+                onChange={(e) => setWeekStart(e.target.value)}
+                className="form-input"
+              />
+              <input
+                type="date"
+                value={weekEnd}
+                onChange={(e) => setWeekEnd(e.target.value)}
+                className="form-input"
+              />
               
               <select
                 value={statusFilter}
@@ -534,7 +518,7 @@ const Payments: React.FC = () => {
                 <th className="w-12">
                   <input
                     type="checkbox"
-                    checked={selectedPayments.length === currentPayments.length && currentPayments.length > 0}
+                    checked={selectedRestaurantIds.length === currentPayments.length && currentPayments.length > 0}
                     onChange={handleSelectAll}
                     className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                   />
@@ -566,8 +550,8 @@ const Payments: React.FC = () => {
                   <td>
                     <input
                       type="checkbox"
-                      checked={selectedPayments.includes(payment.id)}
-                      onChange={() => handleSelectPayment(payment.id)}
+                      checked={selectedRestaurantIds.includes(payment.restaurantId)}
+                      onChange={() => handleSelectPayment(payment.restaurantId)}
                       className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                     />
                   </td>
@@ -586,8 +570,7 @@ const Payments: React.FC = () => {
                   </td>
                   <td>
                     <div className="text-center">
-                      <p className="font-medium text-gray-900">{payment.month}</p>
-                      <p className="text-sm text-gray-500">{payment.year}</p>
+                      <p className="font-medium text-gray-900">{payment.period}</p>
                     </div>
                   </td>
                   <td>
@@ -617,7 +600,7 @@ const Payments: React.FC = () => {
                         <Eye className="w-4 h-4" />
                       </button>
                       {payment.status === 'pending' && (
-                        <button className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors" title="Process Payment">
+                        <button className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors" title="Process Payment" onClick={() => handleInitiatePayment(payment)}>
                           <Send className="w-4 h-4" />
                         </button>
                       )}
@@ -686,10 +669,10 @@ const Payments: React.FC = () => {
                   <Zap className="w-8 h-8 text-white" />
                 </div>
                 <h4 className="text-lg font-semibold text-gray-900 mb-2">
-                  Process {selectedPayments.length} Payments
+                  Process {selectedRestaurantIds.length} Payments
                 </h4>
                 <p className="text-gray-600 mb-4">
-                  This will initiate settlement for {selectedPayments.length} selected restaurants using Razorpay X.
+                  This will initiate settlement for {selectedRestaurantIds.length} selected restaurants using Razorpay X.
                 </p>
                 
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">

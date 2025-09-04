@@ -38,7 +38,7 @@ export const RealtimeProvider: React.FC<RealtimeProviderProps> = ({ children }) 
   const { user } = useAuth();
 
   const connect = () => {
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('authToken');
     if (!token) {
       console.log('No auth token available, skipping socket connection');
       return;

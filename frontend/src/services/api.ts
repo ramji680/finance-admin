@@ -69,6 +69,22 @@ export const paymentsApi = {
   }
 };
 
+// Settlements API (weekly)
+export const settlementsApi = {
+  getWeekly: async (params: { weekStart: string; weekEnd: string }) => {
+    return api.get('/settlements/weekly', { params });
+  },
+  generateWeekly: async (data: { weekStart: string; weekEnd: string; yearWeek?: number }) => {
+    return api.post('/settlements/weekly/generate', data);
+  },
+  initiate: async (id: number) => {
+    return api.post(`/settlements/weekly/${id}/initiate`, {});
+  },
+  markCompleted: async (id: number) => {
+    return api.post(`/settlements/weekly/${id}/mark-completed`, {});
+  },
+};
+
 // Support API
 export const supportApi = {
   getTickets: async (params: { page: number; limit: number; search?: string; status?: string; priority?: string; category?: string }) => {

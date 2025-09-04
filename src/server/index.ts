@@ -14,6 +14,7 @@ const dashboardRoutes = require('../routes/dashboard').default;
 const restaurantRoutes = require('../routes/restaurants').default;
 const paymentRoutes = require('../routes/payments').default;
 const { initializePaymentRoutes } = require('../routes/payments');
+const settlementRoutes = require('../routes/settlements').default;
 const supportRoutes = require('../routes/support').default;
 const userRoutes = require('../routes/users').default;
 const { authenticateToken } = require('../middleware/auth');
@@ -125,6 +126,7 @@ app.use('/api/restaurants', authenticateToken, restaurantRoutes);
 // Initialize payment routes with Socket.IO instance
 initializePaymentRoutes(io);
 app.use('/api/payments', authenticateToken, paymentRoutes);
+app.use('/api/settlements', authenticateToken, settlementRoutes);
 
 app.use('/api/support', authenticateToken, supportRoutes);
 app.use('/api/users', authenticateToken, userRoutes);

@@ -185,7 +185,7 @@ router.get('/recent-activity', asyncHandler(async (_req: Request, res: Response)
         id,
         order_id,
         amount,
-        status,
+        CASE WHEN razor_paying_status = '1' THEN 'captured' ELSE 'failed' END AS status,
         created_at
       FROM razorpay_payments
       ORDER BY created_at DESC

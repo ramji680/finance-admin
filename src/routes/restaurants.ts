@@ -81,13 +81,14 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
     const restaurantsWithStats = await Promise.all(
       restaurants.map(async (restaurant) => {
         const orderCount = await Order.count({
-          where: { restaurant_id: restaurant.id },
+          where: { restaurant_id: restaurant.id, status: 'Delivered', paying_status: '1' },
         });
 
         const totalRevenue = await Order.sum('grand_total_user', {
           where: {
             restaurant_id: restaurant.id,
-            paying_status: 'paid',
+            paying_status: '1',
+            status: 'Delivered',
           },
         });
 

@@ -4,6 +4,8 @@ import Restaurant from './Restaurant';
 import Order from './Order';
 import Payment from './Payment';
 import SupportTicket from './SupportTicket';
+import WeeklySettlement from './WeeklySettlement';
+import WeeklySettlementOrder from './WeeklySettlementOrder';
 
 // Define associations
 Restaurant.hasMany(Order, {
@@ -59,6 +61,8 @@ export {
   Order,
   Payment,
   SupportTicket,
+  WeeklySettlement,
+  WeeklySettlementOrder,
 };
 
 export default sequelize;
